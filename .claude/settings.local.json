@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run build:studio:*)",
+      "Bash(npm run build:lib:*)",
+      "Bash(npm run build:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm install:*)",
+      "WebSearch",
+      "WebFetch(domain:www.npmjs.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:bpmn.io)",
+      "WebFetch(domain:demo.bpmn.io)",
+      "WebFetch(domain:forum.bpmn.io)",
+      "Bash(node -e \"const p=require\\(''./node_modules/bpmn-js-properties-panel/package.json''\\); console.log\\(JSON.stringify\\({main:p.main,module:p.module,exports:p.exports},null,2\\)\\)\")",
+      "Bash(find D:/projects/bpmn-js/node_modules/didi -name *.d.ts)",
+      "Bash(find /d/projects/bpmn-js -name *.ts -type f)",
+      "Bash(npm info:*)",
+      "Bash(grep -A 20 '\"\"AsyncCapable\"\"' D:/projects/bpmn-js/node_modules/activiti-bpmn-moddle/resources/activiti.json)",
+      "Bash(grep -A 20 '\"\"FormSupported\"\"' D:/projects/bpmn-js/node_modules/activiti-bpmn-moddle/resources/activiti.json)"
+    ]
+  }
+}

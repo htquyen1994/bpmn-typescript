@@ -1,0 +1,36 @@
+{
+  "name": "@csp-bpmn-studio/core",
+  "version": "0.1.0",
+  "description": "TypeScript library wrapping bpmn-js inside an iframe-isolated web component",
+  "type": "module",
+  "main": "dist/csp-bpmn.umd.js",
+  "module": "dist/csp-bpmn.es.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/csp-bpmn.es.js",
+      "require": "./dist/csp-bpmn.umd.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "vite serve src/sample",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@bpmn-io/properties-panel": "^3.40.4",
+    "activiti-bpmn-moddle": "^4.4.0",
+    "bpmn-js": "^17.11.1",
+    "bpmn-js-properties-panel": "^5.53.0",
+    "diagram-js-grid": "^2.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "typescript": "^5.7.3",
+    "vite": "^6.2.2",
+    "vite-plugin-dts": "^4.5.3"
+  }
+}

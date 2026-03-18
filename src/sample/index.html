@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CSP BPMN Studio – Sample</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; font-family: system-ui, sans-serif; }
+
+    body { display: flex; flex-direction: column; }
+
+    .toolbar {
+      display: flex; gap: 8px; padding: 8px 12px;
+      background: #f4f4f5; border-bottom: 1px solid #d4d4d8;
+      flex-wrap: wrap;
+    }
+    .toolbar button {
+      padding: 6px 14px; border: 1px solid #a1a1aa; border-radius: 4px;
+      background: #fff; cursor: pointer; font-size: 13px;
+    }
+    .toolbar button:hover { background: #e4e4e7; }
+
+    .main { display: flex; flex: 1; min-height: 0; }
+
+    #diagram-container {
+      flex: 1; position: relative;
+    }
+
+    #output {
+      width: 320px; padding: 10px; overflow: auto;
+      background: #1e1e2e; color: #cdd6f4; font-family: monospace;
+      font-size: 12px; white-space: pre-wrap; border-left: 1px solid #313244;
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <button id="btn-import">Import XML</button>
+    <button id="btn-open-file">📂 Open File</button>
+    <input id="input-open-file" type="file" accept=".bpmn,.xml" style="display:none" />
+    <button id="btn-export-xml">Export XML</button>
+    <button id="btn-download-xml">⬇ Download XML</button>
+    <button id="btn-export-svg">Export SVG</button>
+    <button id="btn-zoom-in">Zoom +</button>
+    <button id="btn-zoom-out">Zoom −</button>
+    <button id="btn-zoom-fit">Fit</button>
+    <button id="btn-zoom-reset">1:1</button>
+    <button id="btn-undo">Undo</button>
+    <button id="btn-redo">Redo</button>
+    <button id="btn-destroy">Destroy</button>
+  </div>
+
+  <div class="main">
+    <div id="diagram-container"></div>
+    <pre id="output">Events will appear here…
+</pre>
+  </div>
+
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>

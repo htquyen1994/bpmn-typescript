@@ -1,0 +1,121 @@
+import Modeler from 'bpmn-js/lib/Modeler';
+import NavigatedViewer from 'bpmn-js/lib/NavigatedViewer';
+import type { BpmnElement } from '../types/index.js';
+
+// ─── Typed interfaces for bpmn-js internal services ─────────────────────────
+
+export interface BpmnViewbox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  scale: number;
+}
+
+export interface BpmnCanvas {
+  zoom(value?: number | 'fit-viewport', center?: { x: number; y: number }): number;
+  scroll(delta: { dx: number; dy: number }): void;
+  getRootElement(): { id: string; type: string };
+  getContainer(): HTMLElement;
+  viewbox(): BpmnViewbox;
+}
+
+export interface BpmnEventBus {
+  on(event: string, callback: (e: any) => void): void;
+  off(event: string, callback: (e: any) => void): void;
+  fire(event: string, data?: any): void;
+}
+
+export interface BpmnCommandStack {
+  undo(): void;
+  redo(): void;
+  canUndo(): boolean;
+  canRedo(): boolean;
+}
+
+export interface BpmnElementRegistry {
+  get(id: string): any;
+  getAll(): any[];
+  filter(fn: (el: any) => boolean): any[];
+}
+
+// ─── Type alias for a raw bpmn-js instance ──────────────────────────────────
+
+type BpmnJsInstance = Modeler | NavigatedViewer;
+
+// ─── Extender ────────────────────────────────────────────────────────────────
+
+/**
+ * Typed wrapper around a bpmn-js `Modeler` or `NavigatedViewer` instance.
+ *
+ * Replaces direct `import Modeler from 'bpmn-js/lib/Modeler'` usage in the
+ * studio element and provides proper TypeScript types for all service accessors.
+ */
+export class BpmnModelerExtender {
+  private readonly _instance: BpmnJsInstance;
+
+  constructor(instance: BpmnJsInstance) {
+    this._instance = instance;
+  }
+
+  // ── Service accessors ──────────────────────────────────────────────────────
+
+  get canvas(): BpmnCanvas {
+    return this._instance.get('canvas') as BpmnCanvas;
+  }
+
+  get eventBus(): BpmnEventBus {
+    return this._instance.get('eventBus') as BpmnEventBus;
+  }
+
+  get commandStack(): BpmnCommandStack {
+    return this._instance.get('commandStack') as BpmnCommandStack;
+  }
+
+  get elementRegistry(): BpmnElementRegistry {
+    return this._instance.get('elementRegistry') as BpmnElementRegistry;
+  }
+
+  /** Raw bpmn-js moddle instance – used for low-level XML parse / serialise. */
+  get moddle(): any {
+    return this._instance.get('moddle');
+  }
+
+  /** The in-memory store for reusable SubProcess XML snippets (modeler mode only). */
+  get subprocessStore(): any {
+    try { return this._instance.get('subprocessStore'); } catch { return null; }
+  }
+
+  // ── Diagram operations ─────────────────────────────────────────────────────
+
+  async importXML(xml: string): Promise<{ warnings: string[] }> {
+    return this._instance.importXML(xml) as Promise<{ warnings: string[] }>;
+  }
+
+  async saveXML(options?: { format?: boolean }): Promise<{ xml: string }> {
+    return this._instance.saveXML(options ?? {}) as Promise<{ xml: string }>;
+  }
+
+  async saveSVG(): Promise<{ svg: string }> {
+    return this._instance.saveSVG() as Promise<{ svg: string }>;
+  }
+
+  // ── Element helpers ────────────────────────────────────────────────────────
+
+  getElement(elementId: string): BpmnElement | null {
+    const el = this.elementRegistry.get(elementId);
+    if (!el) return null;
+    return {
+      id: el.id,
+      type: el.type,
+      name: el.businessObject?.name,
+      parent: el.parent ? { id: el.parent.id } : undefined,
+    };
+  }
+
+  // ── Lifecycle ──────────────────────────────────────────────────────────────
+
+  destroy(): void {
+    try { this._instance.destroy(); } catch { /* ignore */ }
+  }
+}
