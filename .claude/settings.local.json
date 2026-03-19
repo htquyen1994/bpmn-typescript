@@ -17,7 +17,9 @@
       "Bash(find /d/projects/bpmn-js -name *.ts -type f)",
       "Bash(npm info:*)",
       "Bash(grep -A 20 '\"\"AsyncCapable\"\"' D:/projects/bpmn-js/node_modules/activiti-bpmn-moddle/resources/activiti.json)",
-      "Bash(grep -A 20 '\"\"FormSupported\"\"' D:/projects/bpmn-js/node_modules/activiti-bpmn-moddle/resources/activiti.json)"
+      "Bash(grep -A 20 '\"\"FormSupported\"\"' D:/projects/bpmn-js/node_modules/activiti-bpmn-moddle/resources/activiti.json)",
+      "Bash(ls D:/projects/bpmn-js/*.md)",
+      "Bash(npm run:*)"
     ]
   }
 }

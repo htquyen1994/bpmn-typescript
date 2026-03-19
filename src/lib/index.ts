@@ -1,6 +1,3 @@
-// Side-effect: registers <csp-bpmn-studio> custom element.
-import './studio/csp-bpmn-studio.js';
-
 export { CSPBpm } from './facade/csp-bpmn-facade.js';
 
 // Re-usable base class for building additional Web Components.

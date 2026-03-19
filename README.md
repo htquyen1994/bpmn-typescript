@@ -261,8 +261,8 @@ Host page
 **Why iframe isolation?**
 bpmn-js injects several global CSS stylesheets. Without isolation these override the host application's styles. The iframe ensures bpmn-js styles are fully contained.
 
-**Same-bundle trick**
-The facade detects the currently executing script URL and loads the same bundle inside the iframe `<script type="module">`. This registers `<csp-bpmn-studio>` inside the iframe's custom element registry without needing a separate HTML file.
+**Two-phase build & self-contained iframe**
+See [§ Two-phase build](#two-phase-build) below for a full explanation of how the studio is embedded without requiring any URL or server file.
 
 ---
 
@@ -291,6 +291,84 @@ import type {
 
 ---
 
+## Two-phase build
+
+### The problem with a single bundle
+
+The `CSPBpm` facade loads the studio inside an `<iframe>` for CSS/DOM isolation. The iframe needs a complete HTML document that registers the `<csp-bpmn-studio>` custom element. The naive approach is to detect the currently executing script URL at runtime and inject it as `<script src="...">` into a Blob HTML document. This breaks the moment the library is consumed through a modern bundler (Vite, webpack, Rollup), because the bundler re-packages the code — the original script URL no longer exists at the path the library expects, or is not a `<script src>` tag at all.
+
+### Solution: inline the studio bundle as a string
+
+The build is split into two sequential phases:
+
+```
+Phase 1  vite.studio.config.ts
+         src/lib/studio/csp-bpmn-studio.ts
+         → temp/studio-bundle.js   (IIFE, all deps bundled, ~3 MB minified)
+
+Phase 2  vite.config.ts
+         src/lib/index.ts  (facade + public API)
+         reads temp/studio-bundle.js via ?raw import → string literal embedded inside
+         → dist/csp-bpmn.es.js
+         → dist/csp-bpmn.umd.js
+         temp/ deleted after build
+```
+
+At runtime, `createStudioFrameURL()` in the facade builds an HTML string that contains the entire studio bundle as an **inline `<script>`**, then turns it into a Blob URL:
+
+```typescript
+// studioBundle is a string constant baked into the final dist file by Vite's ?raw import.
+const content = `<!DOCTYPE html><html>
+  <head>
+    <script>${safeBundle}<\/script>
+  </head>
+  <body><csp-bpmn-studio></csp-bpmn-studio></body>
+</html>`;
+return URL.createObjectURL(new Blob([content], { type: 'text/html' }));
+```
+
+There is no URL to manage, no server file to deploy, and no runtime environment dependency.
+
+---
+
+### Why IIFE and not ESM for Phase 1?
+
+| | ESM (`type="module"`) | IIFE |
+|---|---|---|
+| Inline `<script>` support | **No** — `import` statements are forbidden inside inline scripts by the HTML spec | **Yes** — self-executing function, no imports |
+| External `<script src="blob:...">` | Works, but adds an extra Blob URL lifecycle to manage | Not needed |
+| `customElements.define` timing | Deferred (modules are always async) — the `<csp-bpmn-studio>` tag might upgrade after the element is parsed | Synchronous — element is registered before `<body>` is parsed |
+| Tree-shaking | Available | Not needed (we bundle everything intentionally) |
+| Requires `type="module"` attribute | Yes | No |
+
+**Key constraint — inline scripts cannot use `import`:**
+
+The HTML spec states that `<script type="module">` blocks may only appear as external scripts (with `src`) or as inline scripts *without* `import` statements. A compiled ESM bundle still contains `import` at the top of the file, which is illegal inside an inline `<script>`. The browser will refuse to execute it.
+
+An IIFE bundle wraps everything in:
+
+```js
+var CspBpmnStudio = (function () {
+  /* bpmn-js + studio code — no import statements */
+  customElements.define('csp-bpmn-studio', CspBpmnStudioElement);
+  return { CspBpmnStudioElement };
+})();
+```
+
+This is a plain classic script that browsers have supported since the beginning. It runs **synchronously** as soon as the `<script>` tag is encountered, so the custom element is registered before the HTML parser reaches `<csp-bpmn-studio>` in `<body>`.
+
+**`</script>` injection guard:**
+
+If the studio bundle contains the literal string `</script>` (e.g. inside a minified string constant), the HTML parser would prematurely close the `<script>` tag. The facade escapes this at build time:
+
+```typescript
+const safeBundle = studioBundle.replace(/<\/script>/gi, '<\\/script>');
+```
+
+In JavaScript, `<\/script>` and `</script>` are identical at runtime — the backslash is a no-op escape — but the HTML parser never sees the closing sequence.
+
+---
+
 ## Build
 
 The library is bundled with [Vite](https://vitejs.dev/) into two formats:
@@ -304,7 +382,12 @@ The library is bundled with [Vite](https://vitejs.dev/) into two formats:
 All dependencies (including bpmn-js) are bundled — no peer dependencies required.
 
 ```bash
+# Full 2-phase build (Phase 1 → temp/, Phase 2 → dist/, temp/ deleted)
 npm run build
+
+# Run phases individually (useful for debugging)
+npm run build:studio   # Phase 1 only → temp/studio-bundle.js
+npm run build:facade   # Phase 2 only → dist/  (requires temp/ from Phase 1)
 ```
 
 ---

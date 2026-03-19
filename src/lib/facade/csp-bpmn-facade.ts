@@ -1,8 +1,9 @@
 import type { CSPBpmConfig, BpmStudioMode, BpmnEventType, BpmnEventCallback } from '../types/index.js';
 import type { StudioComponent } from '../studio/csp-bpmn-studio.js';
 
-// Side-effect: ensure the custom element is registered when this module loads.
-import '../studio/csp-bpmn-studio.js';
+// Phase 1 output — the entire studio compiled to an IIFE string, inlined at build time.
+// @ts-ignore – ?raw is a Vite build-time suffix; the file is produced by Phase 1.
+import studioBundle from '../../../temp/studio-bundle.js?raw';
 
 /**
  * Public facade that wraps the `<csp-bpmn-studio>` web component inside an
@@ -146,10 +147,9 @@ export class CSPBpm {
   }
 
   private createStudioFrameURL(): string {
-    // Detect the URL of the currently executing script so the iframe
-    // can load the same bundle (which registers the custom element).
-    const scripts = document.getElementsByTagName('script');
-    const currentScriptSrc = scripts[scripts.length - 1]?.src || '';
+    // Escape any literal </script> sequences inside the bundle so the HTML
+    // parser does not prematurely close the inline <script> tag.
+    const safeBundle = (studioBundle as string).replace(/<\/script>/gi, '<\\/script>');
 
     const content = `<!DOCTYPE html>
 <html>
@@ -158,7 +158,7 @@ export class CSPBpm {
       body, html { margin:0; padding:0; overflow:hidden; height:100vh; width:100vw; }
       csp-bpmn-studio { display:block; height:100%; width:100%; }
     </style>
-    <script type="module" src="${currentScriptSrc}"><\/script>
+    <script>${safeBundle}<\/script>
   </head>
   <body>
     <csp-bpmn-studio></csp-bpmn-studio>
