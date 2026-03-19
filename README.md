@@ -264,6 +264,135 @@ bpmn-js injects several global CSS stylesheets. Without isolation these override
 **Two-phase build & self-contained iframe**
 See [§ Two-phase build](#two-phase-build) below for a full explanation of how the studio is embedded without requiring any URL or server file.
 
+**Custom Properties Panel**
+Renders in the *host page* DOM — outside the iframe. The facade subscribes to `selection.changed` inside the iframe and forwards the selected element to the panel. Values are stored in memory and retrieved with `getCustomValues()`. See [§ Custom Properties Panel](#custom-properties-panel).
+
+---
+
+---
+
+## Custom Properties Panel
+
+A generic, extensible panel for attaching arbitrary form fields to any BPMN element. Renders in the **host page DOM** (not inside the iframe) so it can be styled freely.
+
+### Quick start
+
+```typescript
+const bpm = await CSPBpm.InitBpm({ container, mode: 'modeler' });
+
+// 1. Mount the panel into any element in your page
+bpm.mountCustomPanel(document.getElementById('my-panel')!);
+
+// 2. Register properties for a BPMN type
+bpm.addCustomPropertyForType('bpmn:UserTask', [
+  {
+    key:        'assignee',
+    label:      'Assignee',
+    type:       'selection',
+    options:    () => fetch('/api/users').then(r => r.json()), // async OK
+    validation: { required: true },
+  },
+  {
+    key:         'priority',
+    label:       'Priority',
+    type:        'selection',
+    options:     [
+      { value: 'low',    label: 'Low'    },
+      { value: 'medium', label: 'Medium' },
+      { value: 'high',   label: 'High'   },
+    ],
+    defaultValue: 'medium',
+  },
+  { key: 'notes',    label: 'Notes',        type: 'text', multiline: true },
+  { key: 'isUrgent', label: 'Mark urgent',  type: 'checkbox' },
+]);
+
+// 3. Register for a specific element ID
+bpm.addCustomProperty('Task_Review', {
+  key: 'checklist', label: 'Checklist URL', type: 'text',
+});
+
+// 4. Read values at any time
+bpm.on('element.click', (e) => {
+  console.log(bpm.getCustomValues(e.element.id));
+});
+
+// 5. Programmatic validation
+const isValid = bpm.validateCustomProperties();
+```
+
+### Facade API
+
+| Method | Description |
+|--------|-------------|
+| `mountCustomPanel(container)` | Attach the panel to a DOM element and start listening for selection changes. |
+| `addCustomProperty(target, config)` | Register one or more properties. `target` is an element ID string, `{ elementId }`, or `{ bpmnType }`. |
+| `addCustomPropertyForType(bpmnType, config)` | Shorthand for `addCustomProperty({ bpmnType }, config)`. |
+| `getCustomValues(elementId)` | Return all stored values for an element as `Record<string, unknown>`. |
+| `setCustomValues(elementId, values)` | Pre-populate values programmatically. |
+| `validateCustomProperties()` | Run all validators for the selected element; returns `true` if valid. |
+
+### Property types
+
+| `type` | Input rendered | Extra config |
+|--------|---------------|--------------|
+| `'text'` | `<input>` or `<textarea>` | `placeholder`, `multiline` |
+| `'checkbox'` | `<input type="checkbox">` | — |
+| `'selection'` | `<select>` with optional loading state | `options: SelectOption[] \| () => … \| async () => …`, `placeholder` |
+
+### Validation rules (`ValidationRule`)
+
+| Rule | Type | Description |
+|------|------|-------------|
+| `required` | `boolean` | Non-empty value required. |
+| `pattern` | `RegExp \| string` | Value must match regex. |
+| `min` / `max` | `number` | Numeric bounds (parses string values). |
+| `minLength` / `maxLength` | `number` | String length bounds. |
+| `custom` | `(value) => string \| null` | Arbitrary rule — return an error message or `null`. |
+
+Errors are shown inline below the field on blur. A full validation sweep (all fields at once) is triggered by `validateCustomProperties()`.
+
+### Design patterns used
+
+**Strategy pattern — Validation:**
+`ValidationEngine` composes multiple `IValidationStrategy` objects. Each strategy handles one rule type (`RequiredStrategy`, `PatternStrategy`, `MinMaxStrategy`, `LengthStrategy`, `CustomStrategy`). Add project-specific strategies with `engine.addStrategy(myStrategy)`.
+
+**Factory pattern — Renderers:**
+`PropertyRendererFactory` is a static registry mapping type strings to `IPropertyRenderer` implementations. Built-in renderers are registered at import time. Register custom types with:
+```typescript
+import { PropertyRendererFactory } from '@csp-bpmn-studio/core';
+
+PropertyRendererFactory.register('date-picker', new MyDatePickerRenderer());
+```
+
+**Facade pattern — API surface:**
+`CSPBpm` exposes the four-method surface (`mountCustomPanel`, `addCustomProperty`, `getCustomValues`, `validateCustomProperties`) while hiding the `CustomPropertiesPanel`, `ValidationEngine`, and renderer wiring.
+
+### Module structure
+
+```
+src/lib/custom-panel/
+├── types.ts                     # All type definitions (discriminated union)
+├── validation.ts                # IValidationStrategy + ValidationEngine
+├── panel-styles.ts              # CSS injected once into document.head
+├── custom-properties-panel.ts   # Core panel class
+├── renderers/
+│   ├── factory.ts               # IPropertyRenderer + PropertyRendererFactory
+│   ├── text.ts
+│   ├── checkbox.ts
+│   └── selection.ts             # Handles sync / async OptionsSource
+└── index.ts                     # Registers built-in renderers + re-exports
+```
+
+### Sample demo
+
+```bash
+npm run dev
+# Open http://localhost:5173/custom-panel.html
+```
+
+The demo shows a Leave Approval process with `UserTask` and `ServiceTask` elements. Clicking either type shows type-specific custom properties. The `Assignee` field simulates a 500 ms async API call.
+
 ---
 
 ## TypeScript Types
@@ -411,6 +540,90 @@ Opens the sample app at `http://localhost:5173`. The sample demonstrates all fea
 | `@bpmn-io/properties-panel` | ^3 | Properties panel base UI |
 | `activiti-bpmn-moddle` | ^4 | Activiti moddle extension |
 | `diagram-js-grid` | ^2 | Background dot grid |
+
+---
+
+## Rollup Hooks & Vite Plugin Lifecycle
+
+Vite dùng **Rollup** bên dưới để bundle. Rollup expose một hệ thống **hook** — các điểm cắm vào trong quá trình build mà plugin có thể đăng ký callback.
+
+### Vòng đời của một Rollup build
+
+```
+[1] options       ← đọc & transform config
+[2] buildStart    ← bắt đầu build
+[3] resolveId     ← tìm đường dẫn của từng import
+[4] load          ← đọc nội dung file
+[5] transform     ← biến đổi code (transpile TS, inline CSS...)
+[6] buildEnd      ← kết thúc parse toàn bộ modules
+[7] renderChunk   ← sinh ra code cho từng chunk
+[8] writeBundle   ← ghi file ra disk
+[9] closeBundle   ← dọn dẹp
+```
+
+Mỗi bước trên là một hook. Plugin đăng ký hàm vào hook nào thì được gọi đúng lúc đó:
+
+```ts
+const myPlugin = {
+  name: 'my-plugin',
+
+  buildStart() {
+    // Chạy MỘT LẦN khi Rollup bắt đầu build
+  },
+
+  transform(code, id) {
+    // Chạy cho MỖI FILE được import
+    if (id.endsWith('.txt')) {
+      return `export default ${JSON.stringify(code)}`;
+    }
+  },
+
+  closeBundle() {
+    // Chạy SAU KHI tất cả file đã được ghi ra disk
+  },
+};
+```
+
+### Vite mở rộng Rollup hooks
+
+Vite dùng Rollup để build (`npm run build`), nhưng với dev server thì Vite tự xử lý theo cách riêng. Vì vậy Vite **thêm hook của riêng mình** mà Rollup không có:
+
+| Hook | Thuộc về | Khi nào chạy |
+|------|----------|-------------|
+| `buildStart` | Rollup | Build mode: trước khi bundle. Dev mode: per-request transform, không đảm bảo thứ tự |
+| `transform` | Rollup | Mỗi khi một file được request hoặc bundle |
+| `configureServer` | **Vite only** | Dev mode: trong lúc setup HTTP server, **trước mọi request** |
+| `configResolved` | **Vite only** | Sau khi config được resolve xong |
+| `handleHotUpdate` | **Vite only** | Khi file thay đổi (HMR) |
+
+### Tại sao `buildStart` không đủ cho dev mode
+
+Dự án này cần `temp/studio-bundle.js` tồn tại trước khi Vite resolve import `?raw`. Đây là lý do `buildStart` không hoạt động trong dev mode:
+
+```
+Vite dev server lifecycle:
+  1. config resolved
+  2. configureServer()        ← Vite hook, TRƯỚC khi server listen
+  3. Server bắt đầu nhận request
+  4. Browser request file.ts
+  5. transform() chạy
+     → vite:import-analysis  ← tìm file ?raw, THROW nếu không có
+  6. buildStart()             ← Rollup hook, fire lúc này (SAU bước 5)
+```
+
+`buildStart` không phải "trước khi server chạy" mà là "trước khi Rollup bắt đầu bundle một module" — trong dev mode điều đó xảy ra **per-request**, tức là sau khi `import-analysis` đã fail rồi.
+
+**Giải pháp dùng trong dự án này** (`vite.config.ts`):
+
+```ts
+function ensureStudioBundle(): Plugin {
+  return {
+    name: 'csp-ensure-studio-bundle',
+    configureServer() { runPhase1IfNeeded(); },  // dev: trước mọi request
+    buildStart()      { runPhase1IfNeeded(); },  // build: safety net
+  };
+}
+```
 
 ---
 

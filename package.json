@@ -17,7 +17,7 @@
     "dist"
   ],
   "scripts": {
-    "dev": "vite serve src/sample",
+    "dev": "vite serve src/sample --config vite.config.ts",
     "build:studio": "vite build --config vite.studio.config.ts",
     "build:facade": "vite build",
     "build": "npm run build:studio && npm run build:facade && node -e \"require('fs').rmSync('temp',{recursive:true,force:true})\""

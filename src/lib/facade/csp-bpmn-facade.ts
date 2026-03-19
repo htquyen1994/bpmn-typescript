@@ -5,6 +5,9 @@ import type { StudioComponent } from '../studio/csp-bpmn-studio.js';
 // @ts-ignore – ?raw is a Vite build-time suffix; the file is produced by Phase 1.
 import studioBundle from '../../../temp/studio-bundle.js?raw';
 
+import { CustomPropertiesPanel } from '../custom-panel/index.js';
+import type { CustomPropertyConfig, PropertyTarget } from '../custom-panel/types.js';
+
 /**
  * Public facade that wraps the `<csp-bpmn-studio>` web component inside an
  * iframe (for CSS / DOM isolation).
@@ -16,9 +19,14 @@ export class CSPBpm {
   private config!: CSPBpmConfig;
   private iframe: HTMLIFrameElement | null = null;
 
-  /**
-   * Factory – creates an iframe, loads the studio, waits until ready.
-   */
+  // ── Custom Properties Panel ─────────────────────────────────────────────────
+  private customPanel:        CustomPropertiesPanel | null = null;
+  private customPanelUnsub:   (() => void) | null = null;
+
+  // ---------------------------------------------------------------------------
+  // Factory
+  // ---------------------------------------------------------------------------
+
   static async InitBpm(config: CSPBpmConfig): Promise<CSPBpm> {
     const instance = new CSPBpm();
     return await instance.init(config);
@@ -27,12 +35,11 @@ export class CSPBpm {
   private async init(config: CSPBpmConfig): Promise<CSPBpm> {
     this.config = config;
 
-    const htmlURL = this.createStudioFrameURL();
+    const htmlURL     = this.createStudioFrameURL();
     const frameStudio = this.createIframe(htmlURL);
     this.config.container.appendChild(frameStudio);
     this.iframe = frameStudio;
 
-    // Wait for iframe to load.
     await new Promise<void>((resolve) => {
       frameStudio.onload = () => resolve();
     });
@@ -41,7 +48,6 @@ export class CSPBpm {
     const frameDoc = frameWin?.document;
     if (!frameDoc) throw new Error('Cannot access iframe content');
 
-    // Wait for the custom element to be defined inside the iframe.
     if (frameWin.customElements) {
       await frameWin.customElements.whenDefined('csp-bpmn-studio');
     }
@@ -49,7 +55,6 @@ export class CSPBpm {
     this.studioEl = frameDoc.querySelector('csp-bpmn-studio') as StudioComponent;
     if (!this.studioEl) throw new Error('Studio element not found in iframe');
 
-    // Wait for the studio's own ready promise.
     if (this.studioEl.ready) {
       await this.studioEl.ready;
     }
@@ -101,7 +106,7 @@ export class CSPBpm {
   // Zoom
   // ---------------------------------------------------------------------------
 
-  zoomIn(): void { this.studioEl.zoomIn(); }
+  zoomIn(): void  { this.studioEl.zoomIn(); }
   zoomOut(): void { this.studioEl.zoomOut(); }
   zoomFit(): void { this.studioEl.zoomFit(); }
   zoomReset(): void { this.studioEl.zoomReset(); }
@@ -122,10 +127,131 @@ export class CSPBpm {
   }
 
   // ---------------------------------------------------------------------------
+  // Custom Properties Panel — Facade API
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Mount a `CustomPropertiesPanel` into the given DOM element.
+   * Automatically subscribes to `selection.changed` to keep the panel in sync.
+   *
+   * Must be called **after** `await CSPBpm.InitBpm(...)`.
+   *
+   * @returns `this` for chaining.
+   */
+  mountCustomPanel(container: HTMLElement): this {
+    // Tear down any previous panel binding
+    this.customPanelUnsub?.();
+    this.customPanelUnsub = null;
+
+    this.customPanel = new CustomPropertiesPanel(container);
+
+    // Subscribe to selection changes inside the iframe
+    this.customPanelUnsub = this.on('selection.changed', (e: any) => {
+      const el = (e?.newSelection as any[])?.[0] ?? null;
+      this.customPanel!.onElementSelected(
+        el
+          ? {
+              id:             el.id,
+              type:           el.type,
+              name:           el.businessObject?.name,
+              parent:         el.parent ? { id: el.parent.id } : undefined,
+              businessObject: el.businessObject,
+            }
+          : null,
+      );
+    });
+
+    return this;
+  }
+
+  /**
+   * Register one or more custom properties for a specific element or BPMN type.
+   *
+   * @param target
+   *   - `string`         → element ID (shorthand for `{ elementId }`)
+   *   - `{ elementId }`  → single element
+   *   - `{ bpmnType }`   → all elements of that type (e.g. `'bpmn:UserTask'`)
+   *
+   * @example
+   * // For a specific element:
+   * bpm.addCustomProperty('Activity_01', { key: 'priority', type: 'text', label: 'Priority' });
+   *
+   * // For every UserTask:
+   * bpm.addCustomProperty({ bpmnType: 'bpmn:UserTask' }, [
+   *   { key: 'assignee', type: 'selection', label: 'Assignee', options: fetchUsers },
+   * ]);
+   */
+  addCustomProperty(
+    target: string | PropertyTarget,
+    config: CustomPropertyConfig | CustomPropertyConfig[],
+  ): this {
+    if (!this.customPanel) {
+      console.warn('[csp-bpmn] Call mountCustomPanel() before addCustomProperty().');
+      return this;
+    }
+    const configs = Array.isArray(config) ? config : [config];
+
+    if (typeof target === 'string') {
+      this.customPanel.addPropertiesForElement(target, configs);
+    } else if ('elementId' in target) {
+      this.customPanel.addPropertiesForElement(target.elementId, configs);
+    } else {
+      this.customPanel.addPropertiesForType(target.bpmnType, configs);
+    }
+
+    return this;
+  }
+
+  /**
+   * Shorthand for `addCustomProperty({ bpmnType }, config)`.
+   *
+   * @example
+   * bpm.addCustomPropertyForType('bpmn:UserTask', assigneeConfig);
+   */
+  addCustomPropertyForType(
+    bpmnType: string,
+    config: CustomPropertyConfig | CustomPropertyConfig[],
+  ): this {
+    return this.addCustomProperty({ bpmnType }, config);
+  }
+
+  /**
+   * Return all stored custom-property values for a given element.
+   *
+   * @example
+   * bpm.on('element.click', (e) => {
+   *   console.log(bpm.getCustomValues(e.element.id));
+   * });
+   */
+  getCustomValues(elementId: string): Record<string, unknown> {
+    return this.customPanel?.getValues(elementId) ?? {};
+  }
+
+  /**
+   * Programmatically set values for a given element.
+   * Triggers a re-render if that element is currently selected.
+   */
+  setCustomValues(elementId: string, values: Record<string, unknown>): this {
+    this.customPanel?.setValues(elementId, values);
+    return this;
+  }
+
+  /**
+   * Validate all custom properties for the currently selected element.
+   * Returns `true` when there are no validation errors.
+   */
+  validateCustomProperties(): boolean {
+    return this.customPanel?.validate() ?? true;
+  }
+
+  // ---------------------------------------------------------------------------
   // Lifecycle
   // ---------------------------------------------------------------------------
 
   destroy(): void {
+    this.customPanelUnsub?.();
+    this.customPanelUnsub = null;
+    this.customPanel      = null;
     this.iframe?.remove();
     this.iframe = null;
   }
@@ -137,9 +263,9 @@ export class CSPBpm {
   private createIframe(src: string): HTMLIFrameElement {
     const iframe = document.createElement('iframe');
     Object.assign(iframe.style, {
-      width: '100%',
-      height: '100%',
-      border: 'none',
+      width:    '100%',
+      height:   '100%',
+      border:   'none',
       overflow: 'hidden',
     });
     iframe.src = src;

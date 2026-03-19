@@ -1,7 +1,46 @@
 import { defineConfig, type Plugin } from 'vite';
 import dts from 'vite-plugin-dts';
 import { resolve } from 'path';
-import { readFileSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
+import { execSync } from 'child_process';
+
+/**
+ * Ensures temp/studio-bundle.js exists before the dev server or Phase 2 build
+ * tries to resolve the ?raw import.
+ *
+ * - `npm run dev`          → temp/ missing → triggers Phase 1 automatically.
+ * - `npm run build:facade` → temp/ was just created by Phase 1 → skips.
+ * - `npm run dev` (again)  → temp/ still present from last run → skips.
+ */
+function runPhase1IfNeeded() {
+  const bundlePath = resolve(__dirname, 'temp/studio-bundle.js');
+  if (!existsSync(bundlePath)) {
+    console.log('\n[csp-bpmn] studio-bundle.js not found — running Phase 1 build…');
+    execSync('npm run build:studio', { stdio: 'inherit', cwd: __dirname });
+    console.log('[csp-bpmn] Phase 1 complete.\n');
+  }
+}
+
+/**
+ * Ensures temp/studio-bundle.js exists before any module resolution happens.
+ *
+ * Two hooks are needed because Vite uses different lifecycles for dev vs build:
+ *
+ * - `configureServer` (dev):   fires before the HTTP server starts accepting
+ *   requests, so the file is guaranteed to exist when vite:import-analysis
+ *   tries to resolve the ?raw import.
+ *
+ * - `buildStart` (build/Phase 2): fires before Rollup starts bundling.
+ *   At this point Phase 1 has already produced temp/studio-bundle.js, so
+ *   this is a safety net (existsSync → skip).
+ */
+function ensureStudioBundle(): Plugin {
+  return {
+    name: 'csp-ensure-studio-bundle',
+    configureServer() { runPhase1IfNeeded(); },
+    buildStart()      { runPhase1IfNeeded(); },
+  };
+}
 
 function distPackageJson(): Plugin {
   return {
@@ -41,6 +80,7 @@ function distPackageJson(): Plugin {
 
 export default defineConfig({
   plugins: [
+    ensureStudioBundle(),
     dts({
       include: ['src/lib/**/*.ts'],
       exclude: ['src/lib/studio/**', 'src/lib/facade/expected-*'],
