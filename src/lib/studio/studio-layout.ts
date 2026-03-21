@@ -10,6 +10,7 @@ export interface LayoutElements {
   toolbarContainer:          HTMLDivElement;
   fileInput:                 HTMLInputElement;
   canvasContainer:           HTMLDivElement;
+  canvasControlsContainer:   HTMLDivElement;
   propertiesPanelContainer:  HTMLDivElement;
   customPanelContainer:      HTMLDivElement;
   customPanelToggle:         HTMLDivElement;
@@ -79,6 +80,10 @@ export class StudioLayout {
     canvasContainer.className = 'bpmn-canvas-container';
     mainArea.appendChild(canvasContainer);
 
+    // Slot for the floating canvas controls (filled by CanvasControls.mount())
+    const canvasControlsContainer = document.createElement('div');
+    canvasContainer.appendChild(canvasControlsContainer);
+
     // ── Right panel ───────────────────────────────────────────────────────────
     const rightPanel = document.createElement('div');
     rightPanel.className = 'bpmn-right-panel';
@@ -115,6 +120,7 @@ export class StudioLayout {
       toolbarContainer,
       fileInput,
       canvasContainer,
+      canvasControlsContainer,
       propertiesPanelContainer,
       customPanelContainer,
       customPanelToggle,

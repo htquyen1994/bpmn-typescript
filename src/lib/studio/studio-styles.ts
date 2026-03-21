@@ -140,4 +140,61 @@ export const STUDIO_LAYOUT_CSS = `
     flex-shrink: 0;
   }
   .csp-custom-panel-body.csp-collapsed { display: none; }
+
+  /* ── Canvas floating controls (bottom-right overlay) ────────────────── */
+  .csp-canvas-controls {
+    position: absolute;
+    bottom: 12px;
+    left: 12px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid #d0d5dd;
+    border-radius: 6px;
+    padding: 3px 5px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+    z-index: 100;
+    pointer-events: auto;
+  }
+  .csp-canvas-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    color: #444;
+    line-height: 1;
+    transition: background 0.12s, color 0.12s;
+  }
+  .csp-canvas-btn:hover {
+    background: #e8f0fe;
+    color: #1a73e8;
+  }
+  .csp-canvas-btn:active {
+    background: #d2e3fc;
+  }
+  .csp-canvas-btn--text {
+    width: auto;
+    min-width: 28px;
+    padding: 0 5px;
+    font-size: 11px;
+    font-weight: 600;
+    font-family: system-ui, sans-serif;
+    color: #555;
+    letter-spacing: .02em;
+  }
+  .csp-canvas-btn--text:hover { color: #1a73e8; }
+  .csp-canvas-sep {
+    width: 1px;
+    height: 18px;
+    background: #d0d5dd;
+    margin: 0 3px;
+    flex-shrink: 0;
+  }
 `;

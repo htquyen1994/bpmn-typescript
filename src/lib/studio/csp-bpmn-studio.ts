@@ -15,6 +15,7 @@ import { CustomPropertiesModule } from '../custom-properties/bpmn-provider.js';
 import { TabManager }             from '../multi/tab-manager.js';
 import { TabBarUI }               from './tab-bar/index.js';
 import { StudioLayout }           from './studio-layout.js';
+import { CanvasControls }         from './canvas-controls.js';
 import { BPMN_CORE_CSS, BPMN_PROPERTIES_CSS, STUDIO_LAYOUT_CSS } from './studio-styles.js';
 import type { LayoutElements }    from './studio-layout.js';
 import type { DiagramTabState, AddTabConfig as TabAddConfig } from '../multi/types.js';
@@ -61,7 +62,8 @@ export class CspBpmnStudioElement extends BaseComponent {
   private provider:   BpmnProvider = 'bpmn';
   private eventCleanups: Array<() => void> = [];
 
-  private readonly _studioLayout = new StudioLayout();
+  private readonly _studioLayout  = new StudioLayout();
+  private readonly _canvasControls = new CanvasControls();
 
   // ── Multi-tab state ───────────────────────────────────────────────────────
   private readonly _tabManager = new TabManager({ defaultTitle: 'Diagram' });
@@ -83,6 +85,7 @@ export class CspBpmnStudioElement extends BaseComponent {
   }
 
   protected onDisconnect(): void {
+    this._canvasControls.destroy();
     this._tabBarUI?.destroy();
     this._tabBarUI = null;
     this._destroyInstance();
@@ -253,6 +256,14 @@ export class CspBpmnStudioElement extends BaseComponent {
       onRename:   (id, title) => { this._tabManager.patch(id, { title }); },
     });
     this._tabBarUI.mount(this._layout.tabBarContainer);
+
+    this._canvasControls.mount(this._layout.canvasControlsContainer, {
+      onZoomIn:    () => this.zoomIn(),
+      onZoomOut:   () => this.zoomOut(),
+      onZoomFit:   () => this.zoomFit(),
+      onZoomReset: () => this.zoomReset(),
+      onExportSvg: () => this._downloadSvg(),
+    });
 
     this._studioLayout.applyMode(this.mode, this._layout);
   }
@@ -444,6 +455,27 @@ export class CspBpmnStudioElement extends BaseComponent {
     this.eventCleanups.push(() => {
       try { this.modeler?.eventBus.off('commandStack.changed', onChanged); } catch { /* ignore */ }
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Private – SVG export download
+  // ---------------------------------------------------------------------------
+
+  private async _downloadSvg(): Promise<void> {
+    if (!this.modeler) return;
+    try {
+      const { svg } = await this.modeler.saveSVG();
+      if (!svg) return;
+      const blob = new Blob([svg], { type: 'image/svg+xml' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = 'diagram.svg';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('[csp-bpmn] SVG export failed:', err);
+    }
   }
 
   // ---------------------------------------------------------------------------
