@@ -96,6 +96,11 @@ export class BpmnModelerExtender {
     try { return this._instance.get('customPropertiesProvider'); } catch { return null; }
   }
 
+  /** Minimap service (modeler mode only). */
+  get minimap(): any {
+    try { return this._instance.get('minimap'); } catch { return null; }
+  }
+
   // ── Diagram operations ─────────────────────────────────────────────────────
 
   async importXML(xml: string): Promise<{ warnings: string[] }> {

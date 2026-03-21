@@ -27,7 +27,8 @@
     "activiti-bpmn-moddle": "^4.4.0",
     "bpmn-js": "^17.11.1",
     "bpmn-js-properties-panel": "^5.53.0",
-    "diagram-js-grid": "^2.0.1"
+    "diagram-js-grid": "^2.0.1",
+    "diagram-js-minimap": "^5.3.0"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",

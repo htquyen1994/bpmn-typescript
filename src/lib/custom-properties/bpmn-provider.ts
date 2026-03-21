@@ -1,9 +1,9 @@
 import type { CustomPropertyConfig, ValidationErrors } from './types.js';
-import { ValidationEngine }  from './validation.js';
-import { ExtensionMapper }   from './extension-mapper.js';
-import { PanelView }         from './panel-view.js';
+import { ValidationEngine } from './validation.js';
+import { ExtensionMapper } from './extension-mapper.js';
+import { PanelView } from './panel-view.js';
 import type { PanelViewCallbacks } from './panel-view.js';
-import { PANEL_STYLES }      from './styles.js';
+import { PANEL_STYLES } from './styles.js';
 
 // Ensure built-in renderers are registered.
 import './renderers/index.js';

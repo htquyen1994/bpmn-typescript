@@ -1,32 +1,15 @@
-// ── Inline SVG icons ──────────────────────────────────────────────────────────
+// @ts-ignore – Vite ?raw resolves at build time
+import zoomInIcon from './icons/zoom-in.svg?raw';
+// @ts-ignore
+import zoomOutIcon from './icons/zoom-out.svg?raw';
+// @ts-ignore
+import zoomFitIcon from './icons/zoom-fit.svg?raw';
+// @ts-ignore
+import exportSvgIcon from './icons/export-svg.svg?raw';
+// @ts-ignore
+import minimapIcon from './icons/minimap.svg?raw';
 
-const ICON_ZOOM_OUT = `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
-  <circle cx="6.5" cy="6.5" r="4.5"/>
-  <line x1="4" y1="6.5" x2="9" y2="6.5"/>
-  <line x1="10.5" y1="10.5" x2="14" y2="14"/>
-</svg>`;
-
-const ICON_ZOOM_IN = `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
-  <circle cx="6.5" cy="6.5" r="4.5"/>
-  <line x1="4" y1="6.5" x2="9" y2="6.5"/>
-  <line x1="6.5" y1="4" x2="6.5" y2="9"/>
-  <line x1="10.5" y1="10.5" x2="14" y2="14"/>
-</svg>`;
-
-const ICON_FIT = `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-  <polyline points="5,1 1,1 1,5"/>
-  <polyline points="11,1 15,1 15,5"/>
-  <polyline points="5,15 1,15 1,11"/>
-  <polyline points="11,15 15,15 15,11"/>
-</svg>`;
-
-const ICON_EXPORT_SVG = `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-  <line x1="8" y1="2" x2="8" y2="11"/>
-  <polyline points="5,8 8,11 11,8"/>
-  <line x1="2" y1="14" x2="14" y2="14"/>
-</svg>`;
-
-// ── Callbacks ─────────────────────────────────────────────────────────────────
+import { UIComponent } from '../base/ui-component.js';
 
 export interface CanvasControlsCallbacks {
   onZoomIn(): void;
@@ -34,38 +17,38 @@ export interface CanvasControlsCallbacks {
   onZoomFit(): void;
   onZoomReset(): void;
   onExportSvg(): Promise<void>;
+  onToggleMinimap?(): boolean;
 }
 
-// ── CanvasControls ────────────────────────────────────────────────────────────
-
 /**
- * Floating control bar rendered at the bottom-right of the canvas container.
- * Groups: [ − | 1:1 | + ] [ ⊡ ] [ ↓SVG ]
+ * Floating control bar at the bottom-left of the canvas.
+ * Groups: [ − | 1:1 | + ] [ ⊡ ] [ ↓SVG ] [ minimap? ]
+ *
+ * Extends UIComponent — DOM is built lazily on first `mount()`.
  */
-export class CanvasControls {
-  private _el: HTMLElement | null = null;
+export class CanvasControls extends UIComponent {
+  private _minimapSep: HTMLElement | null = null;
+  private _minimapBtn: HTMLButtonElement | null = null;
 
-  /** Append the control bar inside `parent` and wire all callbacks. */
-  mount(parent: HTMLElement, callbacks: CanvasControlsCallbacks): void {
-    this._el = this._build(callbacks);
-    parent.appendChild(this._el);
+  constructor(private readonly _cb: CanvasControlsCallbacks) {
+    super();
   }
 
-  destroy(): void {
-    this._el?.remove();
-    this._el = null;
+  /** Show or hide the minimap toggle button (and its separator). */
+  setMinimapSupported(supported: boolean): void {
+    const display = supported ? '' : 'none';
+    if (this._minimapSep) this._minimapSep.style.display = display;
+    if (this._minimapBtn) this._minimapBtn.style.display = display;
   }
 
-  // ── Private ───────────────────────────────────────────────────────────────
-
-  private _build(cbs: CanvasControlsCallbacks): HTMLElement {
+  protected _build(): HTMLElement {
     const bar = document.createElement('div');
     bar.className = 'csp-canvas-controls';
 
-    const btn = (title: string, icon: string, handler: () => void, extraClass = '') => {
+    const btn = (title: string, icon: string, handler: () => void) => {
       const b = document.createElement('button');
-      b.className = 'csp-canvas-btn' + (extraClass ? ` ${extraClass}` : '');
-      b.title     = title;
+      b.className = 'csp-canvas-btn';
+      b.title = title;
       b.innerHTML = icon;
       b.addEventListener('click', handler);
       return b;
@@ -79,18 +62,33 @@ export class CanvasControls {
 
     const resetBtn = document.createElement('button');
     resetBtn.className = 'csp-canvas-btn csp-canvas-btn--text';
-    resetBtn.title     = 'Reset zoom to 100%';
+    resetBtn.title = 'Reset zoom to 100%';
     resetBtn.textContent = '1:1';
-    resetBtn.addEventListener('click', cbs.onZoomReset);
+    resetBtn.addEventListener('click', this._cb.onZoomReset);
+
+    this._minimapSep = sep();
+    this._minimapSep.style.display = 'none';
+
+    this._minimapBtn = document.createElement('button');
+    this._minimapBtn.className = 'csp-canvas-btn';
+    this._minimapBtn.title = 'Toggle minimap';
+    this._minimapBtn.innerHTML = minimapIcon as string;
+    this._minimapBtn.style.display = 'none';
+    this._minimapBtn.addEventListener('click', () => {
+      const isOpen = this._cb.onToggleMinimap?.() ?? false;
+      this._minimapBtn!.classList.toggle('csp-canvas-btn--active', isOpen);
+    });
 
     bar.append(
-      btn('Zoom Out', ICON_ZOOM_OUT, cbs.onZoomOut),
+      btn('Zoom Out', zoomOutIcon as string, this._cb.onZoomOut),
       resetBtn,
-      btn('Zoom In', ICON_ZOOM_IN, cbs.onZoomIn),
+      btn('Zoom In', zoomInIcon as string, this._cb.onZoomIn),
       sep(),
-      btn('Fit to viewport', ICON_FIT, cbs.onZoomFit),
+      btn('Fit to viewport', zoomFitIcon as string, this._cb.onZoomFit),
       sep(),
-      btn('Export SVG', ICON_EXPORT_SVG, () => void cbs.onExportSvg()),
+      btn('Export SVG', exportSvgIcon as string, () => void this._cb.onExportSvg()),
+      this._minimapSep,
+      this._minimapBtn,
     );
 
     return bar;

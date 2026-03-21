@@ -38,3 +38,8 @@ declare module 'camunda-bpmn-moddle/resources/camunda.json' {
   const schema: Record<string, unknown>;
   export default schema;
 }
+
+declare module 'diagram-js-minimap' {
+  const MinimapModule: { [name: string]: unknown };
+  export default MinimapModule;
+}

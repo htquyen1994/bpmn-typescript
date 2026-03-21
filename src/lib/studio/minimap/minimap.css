@@ -1,0 +1,30 @@
+/* ── diagram-js-minimap overrides ──────────────────────────────────────────── */
+
+/* Reposition to bottom-right of canvas (default is top-right) */
+.djs-minimap {
+  top: auto !important;
+  bottom: 16px !important;
+  right: 16px !important;
+  width: 240px;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  border: 1px solid #d0d5dd;
+  background: #fff;
+  overflow: hidden;
+}
+
+/* Fully hidden when not open — we control visibility via canvas-controls */
+.djs-minimap:not(.open) {
+  display: none !important;
+}
+
+/* Hide the built-in toggle button */
+.djs-minimap .toggle {
+  display: none !important;
+}
+
+/* Viewport indicator — Google-blue accent */
+.djs-minimap .viewport {
+  stroke: #1a73e8 !important;
+  fill: rgba(26, 115, 232, 0.08) !important;
+}

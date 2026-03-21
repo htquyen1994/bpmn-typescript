@@ -6,18 +6,19 @@ import GridModule from 'diagram-js-grid';
 import activitiModdle from 'activiti-bpmn-moddle/resources/activiti.json';
 import camundaModdle from 'camunda-bpmn-moddle/resources/camunda.json';
 
-import { BaseComponent }          from '../base/base-component.js';
-import { BpmnModelerExtender }    from './bpmn-modeler-extender.js';
+import { BaseComponent } from '../base/base-component.js';
+import { BpmnModelerExtender } from './bpmn-modeler-extender.js';
 import { ActivitiPropertiesProviderModule } from './activiti-properties-provider.js';
 import { ReusableSubprocessModule, SubprocessCreator, SubprocessStore } from './reusable-subprocess/index.js';
-import { TaskTypePaletteModule }  from './task-type-palette/index.js';
+import { TaskTypePaletteModule } from './task-type-palette/index.js';
 import { CustomPropertiesModule } from '../custom-properties/bpmn-provider.js';
-import { TabManager }             from '../multi/tab-manager.js';
-import { TabBarUI }               from './tab-bar/index.js';
-import { StudioLayout }           from './studio-layout.js';
-import { CanvasControls }         from './canvas-controls.js';
+import { TabManager } from '../multi/tab-manager.js';
+import { TabBarUI } from './tab-bar/index.js';
+import { StudioLayout } from './studio-layout.js';
+import { CanvasControls } from './canvas-controls.js';
 import { BPMN_CORE_CSS, BPMN_PROPERTIES_CSS, STUDIO_LAYOUT_CSS } from './studio-styles.js';
-import type { LayoutElements }    from './studio-layout.js';
+import { MinimapModule, MINIMAP_CSS } from './minimap/index.js';
+import type { LayoutElements } from './studio-layout.js';
 import type { DiagramTabState, AddTabConfig as TabAddConfig } from '../multi/types.js';
 import type { CustomPropertyConfig } from '../custom-properties/types.js';
 import type { BpmStudioMode, BpmnProvider, BpmnEventType, BpmnEventCallback, BpmnElement } from '../types/index.js';
@@ -62,8 +63,8 @@ export class CspBpmnStudioElement extends BaseComponent {
   private provider:   BpmnProvider = 'bpmn';
   private eventCleanups: Array<() => void> = [];
 
-  private readonly _studioLayout  = new StudioLayout();
-  private readonly _canvasControls = new CanvasControls();
+  private readonly _studioLayout = new StudioLayout();
+  private _canvasControls: CanvasControls | null = null;
 
   // ── Multi-tab state ───────────────────────────────────────────────────────
   private readonly _tabManager = new TabManager({ defaultTitle: 'Diagram' });
@@ -85,7 +86,7 @@ export class CspBpmnStudioElement extends BaseComponent {
   }
 
   protected onDisconnect(): void {
-    this._canvasControls.destroy();
+    this._canvasControls!.destroy();
     this._tabBarUI?.destroy();
     this._tabBarUI = null;
     this._destroyInstance();
@@ -111,6 +112,7 @@ export class CspBpmnStudioElement extends BaseComponent {
       this._destroyInstance();
       this._studioLayout.applyMode(mode, this._layout);
       this._createInstance();
+      this._canvasControls?.setMinimapSupported(mode === 'modeler');
     }
   }
 
@@ -237,6 +239,7 @@ export class CspBpmnStudioElement extends BaseComponent {
     this.addStyles('bpmn-core',           BPMN_CORE_CSS);
     this.addStyles('bpmn-properties-panel', BPMN_PROPERTIES_CSS);
     this.addStyles('bpmn-studio-layout',  STUDIO_LAYOUT_CSS);
+    this.addStyles('bpmn-minimap',        MINIMAP_CSS);
   }
 
   // ---------------------------------------------------------------------------
@@ -257,13 +260,20 @@ export class CspBpmnStudioElement extends BaseComponent {
     });
     this._tabBarUI.mount(this._layout.tabBarContainer);
 
-    this._canvasControls.mount(this._layout.canvasControlsContainer, {
-      onZoomIn:    () => this.zoomIn(),
-      onZoomOut:   () => this.zoomOut(),
-      onZoomFit:   () => this.zoomFit(),
-      onZoomReset: () => this.zoomReset(),
-      onExportSvg: () => this._downloadSvg(),
+    this._canvasControls = new CanvasControls({
+      onZoomIn:         () => this.zoomIn(),
+      onZoomOut:        () => this.zoomOut(),
+      onZoomFit:        () => this.zoomFit(),
+      onZoomReset:      () => this.zoomReset(),
+      onExportSvg:      () => this._downloadSvg(),
+      onToggleMinimap:  () => {
+        const minimap = this.modeler?.minimap;
+        if (!minimap) return false;
+        minimap.toggle();
+        return minimap.isOpen() as boolean;
+      },
     });
+    this._canvasControls.mount(this._layout.canvasControlsContainer);
 
     this._studioLayout.applyMode(this.mode, this._layout);
   }
@@ -289,6 +299,7 @@ export class CspBpmnStudioElement extends BaseComponent {
       ReusableSubprocessModule,
       TaskTypePaletteModule,
       CustomPropertiesModule,
+      MinimapModule,
     ];
 
     const moddleExtensions: Record<string, object> = {
