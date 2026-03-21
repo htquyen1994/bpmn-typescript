@@ -1,0 +1,143 @@
+// @ts-ignore – Vite ?inline suffix resolves at build time
+import diagramCss from 'bpmn-js/dist/assets/diagram-js.css?inline';
+// @ts-ignore
+import bpmnCss from 'bpmn-js/dist/assets/bpmn-js.css?inline';
+// @ts-ignore
+import bpmnFontCss from 'bpmn-js/dist/assets/bpmn-font/css/bpmn-embedded.css?inline';
+// @ts-ignore
+import propertiesPanelCss from '@bpmn-io/properties-panel/dist/assets/properties-panel.css?inline';
+
+/** bpmn-js core CSS (diagram-js + bpmn-js + embedded font). */
+export const BPMN_CORE_CSS: string = [diagramCss, bpmnCss, bpmnFontCss].join('\n');
+
+/** @bpmn-io/properties-panel stylesheet. */
+export const BPMN_PROPERTIES_CSS: string = propertiesPanelCss as string;
+
+/** Layout CSS for the studio host element and inner panels. */
+export const STUDIO_LAYOUT_CSS = `
+  csp-bpmn-studio {
+    display: flex !important;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+  }
+  .bpmn-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    background: #f5f5f5;
+    border-bottom: 1px solid #ddd;
+    flex-shrink: 0;
+    font-family: sans-serif;
+    font-size: 12px;
+  }
+  .bpmn-toolbar-label {
+    color: #666;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    margin-right: 2px;
+  }
+  .bpmn-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border: 1px solid #c8c8c8;
+    border-radius: 3px;
+    background: #fff;
+    cursor: pointer;
+    font-size: 12px;
+    color: #333;
+    white-space: nowrap;
+  }
+  .bpmn-btn:hover { background: #e8f0fe; border-color: #4a90d9; color: #1a73e8; }
+
+  /* ── Palette custom icons ───────────────────────────────────────────── */
+  .djs-palette .entry.csp-palette-task-type-more {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='5' cy='12' r='2.5' fill='%23333'/%3E%3Ccircle cx='12' cy='12' r='2.5' fill='%23333'/%3E%3Ccircle cx='19' cy='12' r='2.5' fill='%23333'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 60%;
+  }
+  .djs-palette .entry.csp-palette-task-type-more:hover {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='5' cy='12' r='2.5' fill='%231a73e8'/%3E%3Ccircle cx='12' cy='12' r='2.5' fill='%231a73e8'/%3E%3Ccircle cx='19' cy='12' r='2.5' fill='%231a73e8'/%3E%3C/svg%3E");
+  }
+  .djs-palette .entry.csp-palette-import-sp {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23333' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4'/%3E%3Cpolyline points='17 8 12 3 7 8'/%3E%3Cline x1='12' y1='3' x2='12' y2='15'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 55%;
+  }
+  .djs-palette .entry.csp-palette-import-sp:hover {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231a73e8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4'/%3E%3Cpolyline points='17 8 12 3 7 8'/%3E%3Cline x1='12' y1='3' x2='12' y2='15'/%3E%3C/svg%3E");
+  }
+  .bpmn-main-area {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    min-height: 0;
+  }
+  .bpmn-canvas-container {
+    flex: 1;
+    position: relative;
+    min-width: 0;
+  }
+  /* Allow the palette to overflow the canvas container vertically */
+  .bpmn-canvas-container .djs-container {
+    overflow: visible;
+  }
+  .bpmn-canvas-container .djs-canvas {
+    overflow: hidden;
+  }
+  .djs-palette .djs-palette-entries {
+    overflow-y: auto;
+    max-height: calc(100vh - 120px);
+  }
+  /* ── Right panel (bpmn-js props + custom panel) ────────────────────── */
+  .bpmn-right-panel {
+    width: 300px;
+    min-width: 300px;
+    display: flex;
+    flex-direction: column;
+    border-left: 1px solid #e0e0e0;
+    overflow: hidden;
+  }
+  .bpmn-properties-container {
+    flex: 1;
+    min-height: 80px;
+    overflow-y: auto;
+    background: #fafafa;
+  }
+  /* ── Custom panel toggle ─────────────────────────────────────────────── */
+  .csp-custom-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 12px;
+    background: #eeeeee;
+    border-top: 1px solid #d5d5d5;
+    border-bottom: 1px solid #d5d5d5;
+    cursor: pointer;
+    flex-shrink: 0;
+    font-family: system-ui, sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: #555;
+    user-select: none;
+  }
+  .csp-custom-toggle:hover { background: #e2e2e2; }
+  .csp-custom-toggle-arrow { font-size: 10px; }
+  /* ── Custom panel body ───────────────────────────────────────────────── */
+  .csp-custom-panel-body {
+    height: 300px;
+    overflow-y: auto;
+    background: #fafafa;
+    flex-shrink: 0;
+  }
+  .csp-custom-panel-body.csp-collapsed { display: none; }
+`;

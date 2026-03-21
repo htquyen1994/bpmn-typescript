@@ -30,8 +30,8 @@ export interface IPropertyRenderer {
  * Factory pattern — maps PropertyType strings to IPropertyRenderer instances.
  *
  * Built-in renderers (text, checkbox, selection) are registered in
- * `src/lib/custom-panel/index.ts`. Consumers can register additional
- * renderers for custom types before mounting the panel.
+ * `src/lib/custom-properties/renderers/index.ts`. Consumers can register
+ * additional renderers for custom types before mounting the panel.
  *
  * @example
  * PropertyRendererFactory.register('rating', new StarRatingRenderer());

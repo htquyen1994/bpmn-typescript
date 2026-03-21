@@ -6,7 +6,7 @@ import type { DiagramTabState, AddTabConfig as TabAddConfig } from '../multi/typ
 // @ts-ignore – ?raw is a Vite build-time suffix; the file is produced by Phase 1.
 import studioBundle from '../../../temp/studio-bundle.js?raw';
 
-import type { CustomPropertyConfig, PropertyTarget } from '../custom-panel/types.js';
+import type { CustomPropertyConfig, PropertyTarget } from '../custom-properties/types.js';
 
 /**
  * Public facade that wraps the `<csp-bpmn-studio>` web component inside an

@@ -1,7 +1,7 @@
 export { CSPBpm } from './facade/csp-bpmn-facade.js';
 
 // ── Custom Properties Panel ───────────────────────────────────────────────────
-export { CustomPropertiesPanel, PropertyRendererFactory, ValidationEngine } from './custom-panel/index.js';
+export { CustomPropertiesPanel, PropertyRendererFactory, ValidationEngine } from './custom-properties/index.js';
 export type {
   IPropertyRenderer,
   IValidationStrategy,
@@ -15,7 +15,7 @@ export type {
   SelectionPropertyConfig,
   CustomPropertyConfig,
   PropertyTarget,
-} from './custom-panel/index.js';
+} from './custom-properties/index.js';
 
 // ── Reusable base class / advanced exports ────────────────────────────────────
 export { BaseComponent }        from './base/base-component.js';
