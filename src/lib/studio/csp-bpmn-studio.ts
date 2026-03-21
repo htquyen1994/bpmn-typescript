@@ -21,15 +21,39 @@ import { ActivitiPropertiesProviderModule } from './activiti-properties-provider
 import { ReusableSubprocessModule, SubprocessCreator, SubprocessStore } from './reusable-subprocess/index.js';
 import { TaskTypePaletteModule } from './task-type-palette/index.js';
 import { CustomPropertiesModule } from './custom-properties/index.js';
+import { TabManager } from '../multi/tab-manager.js';
+import { TabBarUI } from './tab-bar/index.js';
+import type { DiagramTabState, AddTabConfig as TabAddConfig } from '../multi/types.js';
 import type { CustomPropertyConfig } from '../custom-panel/types.js';
 import type { BpmStudioMode, BpmnProvider, BpmnEventType, BpmnEventCallback, BpmnElement } from '../types/index.js';
+
+// ── Minimal blank BPMN 2.0 diagram ────────────────────────────────────────────
+
+const EMPTY_DIAGRAM_XML = `<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions
+  xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+  targetNamespace="http://bpmn.io/schema/bpmn"
+  id="Definitions_1">
+  <bpmn:process id="Process_1" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1"/>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_1">
+      <bpmndi:BPMNShape id="_BPMNShape_StartEvent_2" bpmnElement="StartEvent_1">
+        <dc:Bounds x="179" y="159" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>`;
 
 /**
  * `<csp-bpmn-studio>` – Web Component wrapping bpmn-js.
  *
  * Mode behaviour:
- *  - `modeler` (edit)  → palette, properties panel, grid, and reusable-subprocess toolbar visible.
- *  - `viewer`          → read-only canvas only.
+ *  - `modeler` (edit)  → palette, properties panel, grid, tab bar, and reusable-subprocess toolbar visible.
+ *  - `viewer`          → read-only canvas only; tab bar hidden.
  *
  * Provider behaviour (modeler mode only):
  *  - `bpmn`     → standard BPMN 2.0 properties.
@@ -43,10 +67,20 @@ export class CspBpmnStudioElement extends BaseComponent {
   private customPanelContainer:       HTMLDivElement | null = null;
   private customPanelToggle:          HTMLDivElement | null = null;
   private toolbarContainer:           HTMLDivElement | null = null;
+  private tabBarContainer:            HTMLDivElement | null = null;
   private fileInput:                  HTMLInputElement | null = null;
   private mode:                       BpmStudioMode = 'modeler';
   private provider:                   BpmnProvider = 'bpmn';
   private eventCleanups:              Array<() => void> = [];
+
+  // ── Multi-tab state ───────────────────────────────────────────────────────
+  private readonly _tabManager = new TabManager({ defaultTitle: 'Diagram' });
+  private _tabBarUI: TabBarUI | null = null;
+  private _clipboardXml: string | null = null;
+  /** True while an async tab switch is in progress — prevents re-entrant switches. */
+  private _switching = false;
+  /** Resolves when the initial tabs are loaded after createInstance(). */
+  private _tabsReady: Promise<void> = Promise.resolve();
 
   // ---------------------------------------------------------------------------
   // BaseComponent lifecycle hooks
@@ -59,6 +93,8 @@ export class CspBpmnStudioElement extends BaseComponent {
   }
 
   protected onDisconnect(): void {
+    this._tabBarUI?.destroy();
+    this._tabBarUI = null;
     this.destroyInstance();
   }
 
@@ -86,15 +122,28 @@ export class CspBpmnStudioElement extends BaseComponent {
   }
 
   async loadXML(xml: string): Promise<void> {
+    await this._tabsReady;
     if (!this.modeler) throw new Error('Studio not initialized');
     const { warnings } = await this.modeler.importXML(xml);
     if (warnings?.length) console.warn('bpmn-js import warnings:', warnings);
     this.modeler.canvas.zoom('fit-viewport');
+    // Snapshot the active tab with the loaded XML.
+    const activeId = this._tabManager.getActiveId();
+    if (activeId) {
+      this._tabManager.snapshot(activeId, xml, null);
+      this._tabManager.markClean(activeId);
+    }
   }
 
   async saveXML(): Promise<string | undefined> {
     if (!this.modeler) return undefined;
     const { xml } = await this.modeler.saveXML({ format: true });
+    // Persist snapshot and mark clean.
+    const activeId = this._tabManager.getActiveId();
+    if (activeId && xml) {
+      this._tabManager.snapshot(activeId, xml, this.modeler.getViewbox());
+      this._tabManager.markClean(activeId);
+    }
     return xml;
   }
 
@@ -138,7 +187,7 @@ export class CspBpmnStudioElement extends BaseComponent {
   }
 
   // ---------------------------------------------------------------------------
-  // Custom Properties Panel API (delegated to CustomPropertiesProvider)
+  // Custom Properties Panel API
   // ---------------------------------------------------------------------------
 
   registerCustomPropertyForType(bpmnType: string, configs: CustomPropertyConfig[]): void {
@@ -159,6 +208,66 @@ export class CspBpmnStudioElement extends BaseComponent {
 
   validateCustomProperties(): boolean {
     return this.modeler?.customPropertiesProvider?.validate() ?? true;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Multi-tab Public API
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Add a new diagram tab and activate it.
+   *
+   * @returns The new tab's state object.
+   */
+  async addTab(config?: TabAddConfig): Promise<DiagramTabState> {
+    return this._addAndActivateTab(config);
+  }
+
+  /**
+   * Switch to the tab with the given id.
+   *
+   * @returns `true` when the switch completed, `false` if cancelled or not found.
+   */
+  async activateTab(id: string): Promise<boolean> {
+    return this._switchToTab(id);
+  }
+
+  /**
+   * Close the tab with the given id.
+   * If it is the last tab, a new blank tab is opened automatically.
+   */
+  async closeTab(id: string): Promise<void> {
+    return this._onTabClose(id);
+  }
+
+  /** Returns the id of the currently active tab, or null. */
+  getActiveTabId(): string | null {
+    return this._tabManager.getActiveId();
+  }
+
+  /** Returns all open tabs in display order. */
+  getAllTabs(): DiagramTabState[] {
+    return this._tabManager.getAll();
+  }
+
+  /**
+   * Copy the active tab's current XML into an internal clipboard.
+   * Returns the XML string (or null if no tab is active).
+   */
+  async copyActiveTabToClipboard(): Promise<string | null> {
+    if (!this.modeler) return null;
+    const { xml } = await this.modeler.saveXML({ format: true });
+    this._clipboardXml = xml ?? null;
+    return this._clipboardXml;
+  }
+
+  /**
+   * Open a new tab populated with the previously copied XML.
+   * Returns the new tab, or null if the clipboard is empty.
+   */
+  async pasteFromClipboard(): Promise<DiagramTabState | null> {
+    if (!this._clipboardXml) return null;
+    return this._addAndActivateTab({ xml: this._clipboardXml });
   }
 
   // ---------------------------------------------------------------------------
@@ -210,7 +319,6 @@ export class CspBpmnStudioElement extends BaseComponent {
       .bpmn-btn:hover { background: #e8f0fe; border-color: #4a90d9; color: #1a73e8; }
 
       /* ── Palette custom icons ───────────────────────────────────────────── */
-      /* Three-dots "More task types" button */
       .djs-palette .entry.csp-palette-task-type-more {
         background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='5' cy='12' r='2.5' fill='%23333'/%3E%3Ccircle cx='12' cy='12' r='2.5' fill='%23333'/%3E%3Ccircle cx='19' cy='12' r='2.5' fill='%23333'/%3E%3C/svg%3E");
         background-repeat: no-repeat;
@@ -220,7 +328,6 @@ export class CspBpmnStudioElement extends BaseComponent {
       .djs-palette .entry.csp-palette-task-type-more:hover {
         background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='5' cy='12' r='2.5' fill='%231a73e8'/%3E%3Ccircle cx='12' cy='12' r='2.5' fill='%231a73e8'/%3E%3Ccircle cx='19' cy='12' r='2.5' fill='%231a73e8'/%3E%3C/svg%3E");
       }
-      /* Import SubProcess – upload arrow */
       .djs-palette .entry.csp-palette-import-sp {
         background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23333' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4'/%3E%3Cpolyline points='17 8 12 3 7 8'/%3E%3Cline x1='12' y1='3' x2='12' y2='15'/%3E%3C/svg%3E");
         background-repeat: no-repeat;
@@ -359,13 +466,26 @@ export class CspBpmnStudioElement extends BaseComponent {
         collapsed ? '▶' : '▼';
     });
 
+    // ── Tab bar (bottom) ──────────────────────────────────────────────────────
+    this.tabBarContainer = document.createElement('div');
+    this.appendChild(this.tabBarContainer);
+
+    this._tabBarUI = new TabBarUI(this._tabManager, {
+      onActivate: (id) => { void this._switchToTab(id); },
+      onClose:    (id) => { void this._onTabClose(id); },
+      onAdd:      ()   => { void this._addAndActivateTab(); },
+      onRename:   (id, title) => { this._tabManager.patch(id, { title }); },
+    });
+    this._tabBarUI.mount(this.tabBarContainer);
+
     this.applyModeLayout();
   }
 
   private applyModeLayout(): void {
     const isModeler = this.mode === 'modeler';
-    if (this.toolbarContainer)     this.toolbarContainer.style.display     = isModeler ? '' : 'none';
-    // Hide the whole right panel (both bpmn-js props + custom panel) in viewer mode.
+    if (this.toolbarContainer) this.toolbarContainer.style.display = isModeler ? '' : 'none';
+    if (this.tabBarContainer)  this.tabBarContainer.style.display  = isModeler ? '' : 'none';
+    // Hide the whole right panel in viewer mode.
     if (this.propertiesPanelContainer) {
       const rightPanel = this.propertiesPanelContainer.parentElement;
       if (rightPanel) rightPanel.style.display = isModeler ? '' : 'none';
@@ -423,9 +543,26 @@ export class CspBpmnStudioElement extends BaseComponent {
     }
 
     this.wireSubprocessEvents();
+    this._wireTabDirtyTracking();
+
+    // Async: create/reload tabs for the current modeler instance.
+    this._tabsReady = this._initTabsAfterCreate();
   }
 
   private destroyInstance(): void {
+    // Snapshot the active tab XML before the modeler is destroyed.
+    if (this.modeler) {
+      const activeId = this._tabManager.getActiveId();
+      if (activeId) {
+        // Fire-and-forget snapshot (best-effort, synchronous path unavailable)
+        void this.modeler.saveXML({ format: true }).then(({ xml }) => {
+          if (activeId && xml) {
+            this._tabManager.snapshot(activeId, xml, this.modeler?.getViewbox() ?? null);
+          }
+        }).catch(() => { /* ignore */ });
+      }
+    }
+
     for (const cleanup of this.eventCleanups) cleanup();
     this.eventCleanups = [];
     this.modeler?.destroy();
@@ -433,14 +570,156 @@ export class CspBpmnStudioElement extends BaseComponent {
   }
 
   // ---------------------------------------------------------------------------
-  // Private – reusable subprocess wiring
+  // Private – multi-tab logic
   // ---------------------------------------------------------------------------
 
   /**
-   * Listen for events fired by the bpmn-js module:
-   *  - `subprocess.import-request` → open file picker.
-   *  - `subprocess.create`         → merge XML + re-import.
+   * After a fresh modeler instance is created, either:
+   *  a) Create the first default tab (if no tabs exist yet).
+   *  b) Reload the active tab's XML into the new modeler (mode/provider change).
    */
+  private async _initTabsAfterCreate(): Promise<void> {
+    if (!this.modeler) return;
+
+    if (this._tabManager.isEmpty()) {
+      // First launch — add a blank tab and display it.
+      const tab = this._tabManager.add();
+      await this._tabManager.activate(tab.id);
+      try {
+        this._tabManager.setLifecycle(tab.id, 'loading');
+        await this.modeler.importXML(EMPTY_DIAGRAM_XML);
+        this.modeler.canvas.zoom('fit-viewport');
+        this._tabManager.snapshot(tab.id, EMPTY_DIAGRAM_XML, null);
+        this._tabManager.setLifecycle(tab.id, 'ready');
+      } catch (err) {
+        console.error('[csp-bpmn] Failed to load initial diagram:', err);
+        this._tabManager.setLifecycle(tab.id, 'error');
+      }
+    } else {
+      // Re-init (mode or provider changed) — restore active tab.
+      const active = this._tabManager.getActive();
+      if (active) await this._loadTabXML(active);
+    }
+  }
+
+  /** Load a tab's XML into the modeler and restore its viewport. */
+  private async _loadTabXML(tab: DiagramTabState): Promise<void> {
+    if (!this.modeler) return;
+
+    this._tabManager.setLifecycle(tab.id, 'loading');
+    try {
+      const xml = tab.xml || EMPTY_DIAGRAM_XML;
+      await this.modeler.importXML(xml);
+
+      if (tab.viewbox) {
+        this.modeler.setViewbox(tab.viewbox);
+      } else {
+        this.modeler.canvas.zoom('fit-viewport');
+      }
+
+      // Clear custom-properties cache so the panel doesn't show stale values.
+      this.modeler.customPropertiesProvider?.clearStore();
+      this._tabManager.setLifecycle(tab.id, 'ready');
+    } catch (err) {
+      console.error('[csp-bpmn] Failed to load tab XML:', err);
+      this._tabManager.setLifecycle(tab.id, 'error');
+    }
+  }
+
+  /**
+   * Save the current tab's XML + viewport, then load the target tab.
+   * Returns false if already switching or the target id does not exist.
+   */
+  private async _switchToTab(nextId: string): Promise<boolean> {
+    if (this._switching) return false;
+    if (!this.modeler) return false;
+
+    this._switching = true;
+    try {
+      // 1. Snapshot the current tab (best-effort).
+      const currentId = this._tabManager.getActiveId();
+      if (currentId) {
+        try {
+          const { xml } = await this.modeler.saveXML({ format: true });
+          const viewbox = this.modeler.getViewbox();
+          this._tabManager.snapshot(currentId, xml ?? '', viewbox);
+        } catch { /* ignore save errors */ }
+      }
+
+      // 2. Move the active pointer.
+      const ok = await this._tabManager.activate(nextId);
+      if (!ok) return false;
+
+      // 3. Load the new tab's content.
+      const nextTab = this._tabManager.getActive();
+      if (nextTab) await this._loadTabXML(nextTab);
+
+      return true;
+    } finally {
+      this._switching = false;
+    }
+  }
+
+  /** Add a new tab and immediately switch to it. */
+  private async _addAndActivateTab(config?: TabAddConfig): Promise<DiagramTabState> {
+    const tab = this._tabManager.add(config);
+    await this._switchToTab(tab.id);
+    return tab;
+  }
+
+  /** Handle closing a tab, including switching to an adjacent tab or opening a blank one. */
+  private async _onTabClose(id: string): Promise<void> {
+    if (!this._tabManager.has(id)) return;
+
+    const wasActive = this._tabManager.getActiveId() === id;
+
+    // Get adjacent BEFORE removing so we know where to go.
+    const adjacent = this._tabManager.getAdjacentTo(id);
+
+    // Snapshot if we're closing the currently-shown tab.
+    if (wasActive && this.modeler) {
+      try {
+        const { xml } = await this.modeler.saveXML({ format: true });
+        this._tabManager.snapshot(id, xml ?? '', this.modeler.getViewbox());
+      } catch { /* ignore */ }
+    }
+
+    this._tabManager.remove(id);
+
+    if (!wasActive) return; // non-active tab closed — bar re-renders, nothing else needed.
+
+    // The closed tab was active — switch elsewhere.
+    if (adjacent) {
+      await this._switchToTab(adjacent.id);
+    } else if (!this._tabManager.isEmpty()) {
+      // Fallback: switch to whatever is first.
+      await this._switchToTab(this._tabManager.getAll()[0].id);
+    } else {
+      // Last tab was closed — open a fresh blank one.
+      await this._addAndActivateTab();
+    }
+  }
+
+  /** Mark the active tab dirty whenever the command stack changes (user edits). */
+  private _wireTabDirtyTracking(): void {
+    if (!this.modeler) return;
+
+    const onChanged = (): void => {
+      if (this._switching) return; // ignore changes caused by tab-switch importXML
+      const activeId = this._tabManager.getActiveId();
+      if (activeId) this._tabManager.markDirty(activeId);
+    };
+
+    this.modeler.eventBus.on('commandStack.changed', onChanged);
+    this.eventCleanups.push(() => {
+      try { this.modeler?.eventBus.off('commandStack.changed', onChanged); } catch { /* ignore */ }
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Private – reusable subprocess wiring
+  // ---------------------------------------------------------------------------
+
   private wireSubprocessEvents(): void {
     if (!this.modeler) return;
     const eb = this.modeler.eventBus;
@@ -479,7 +758,6 @@ export class CspBpmnStudioElement extends BaseComponent {
     };
     reader.readAsText(file);
 
-    // Reset so the same file can be re-imported
     if (this.fileInput) this.fileInput.value = '';
   }
 

@@ -1,5 +1,6 @@
 import type { CSPBpmConfig, BpmStudioMode, BpmnEventType, BpmnEventCallback } from '../types/index.js';
 import type { StudioComponent } from '../studio/csp-bpmn-studio.js';
+import type { DiagramTabState, AddTabConfig as TabAddConfig } from '../multi/types.js';
 
 // Phase 1 output — the entire studio compiled to an IIFE string, inlined at build time.
 // @ts-ignore – ?raw is a Vite build-time suffix; the file is produced by Phase 1.
@@ -185,6 +186,63 @@ export class CSPBpm {
   /** Validate all custom properties for the currently selected element. */
   validateCustomProperties(): boolean {
     return this.studioEl.validateCustomProperties();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Multi-tab API
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Add a new diagram tab and activate it.
+   *
+   * @example
+   * const tab = await bpm.addTab({ title: 'Order Process', xml: orderXml });
+   */
+  async addTab(config?: TabAddConfig): Promise<DiagramTabState> {
+    return this.studioEl.addTab(config);
+  }
+
+  /**
+   * Switch to the tab with the given id.
+   *
+   * @returns `true` when the switch completed, `false` if cancelled or id not found.
+   */
+  async activateTab(id: string): Promise<boolean> {
+    return this.studioEl.activateTab(id);
+  }
+
+  /**
+   * Close the tab with the given id.
+   * If it is the last tab, a new blank tab is opened automatically.
+   */
+  async closeTab(id: string): Promise<void> {
+    return this.studioEl.closeTab(id);
+  }
+
+  /** Returns the id of the currently active tab, or null. */
+  getActiveTabId(): string | null {
+    return this.studioEl.getActiveTabId();
+  }
+
+  /** Returns all open tabs in display order. */
+  getAllTabs(): DiagramTabState[] {
+    return this.studioEl.getAllTabs();
+  }
+
+  /**
+   * Copy the active diagram's XML to an internal clipboard, then return the XML.
+   * Use `pasteFromClipboard()` to open it as a new tab.
+   */
+  async copyActiveTabToClipboard(): Promise<string | null> {
+    return this.studioEl.copyActiveTabToClipboard();
+  }
+
+  /**
+   * Open a new tab populated with the last copied XML (from `copyActiveTabToClipboard()`).
+   * Returns the new tab, or null if the clipboard is empty.
+   */
+  async pasteFromClipboard(): Promise<DiagramTabState | null> {
+    return this.studioEl.pasteFromClipboard();
   }
 
   // ---------------------------------------------------------------------------

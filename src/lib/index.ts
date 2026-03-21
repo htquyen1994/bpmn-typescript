@@ -41,3 +41,16 @@ export type {
   ExportXmlResult,
   ExportSvgResult,
 } from './types/index.js';
+
+// ── Multi-diagram tab management ──────────────────────────────────────────────
+export { TypedEventBus, TabStore, TabManager } from './multi/index.js';
+export type {
+  DiagramTabState,
+  TabLifecycle,
+  ViewboxSnapshot,
+  AddTabConfig,
+  TabManagerConfig,
+  TabEventMap,
+  TabEvent,
+  BeforeActivateHook,
+} from './multi/index.js';

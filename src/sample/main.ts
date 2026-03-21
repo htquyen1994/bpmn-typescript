@@ -322,6 +322,42 @@ if (output && container) {
       log('Facade destroyed');
     });
 
+    // ── Multi-tab ─────────────────────────────────────────────────────────────
+
+    btn('btn-add-tab').addEventListener('click', async () => {
+      try {
+        const tab = await bpm.addTab();
+        log(`Added tab: "${tab.title}" (${tab.id})`);
+      } catch (err) { log(`Add tab error: ${err}`); }
+    });
+
+    btn('btn-copy-tab').addEventListener('click', async () => {
+      try {
+        const xml = await bpm.copyActiveTabToClipboard();
+        log(`Copied active tab to clipboard (${xml?.length ?? 0} chars)`);
+      } catch (err) { log(`Copy tab error: ${err}`); }
+    });
+
+    btn('btn-paste-tab').addEventListener('click', async () => {
+      try {
+        const tab = await bpm.pasteFromClipboard();
+        if (tab) {
+          log(`Pasted into new tab: "${tab.title}" (${tab.id})`);
+        } else {
+          log('Clipboard is empty — use "Copy Tab" first');
+        }
+      } catch (err) { log(`Paste tab error: ${err}`); }
+    });
+
+    btn('btn-list-tabs').addEventListener('click', () => {
+      const tabs = bpm.getAllTabs();
+      const activeId = bpm.getActiveTabId();
+      log(`Tabs (${tabs.length}), active: ${activeId}`);
+      for (const t of tabs) {
+        log(`  ${t.id === activeId ? '▶' : ' '} [${t.id}] "${t.title}" dirty=${t.isDirty}`);
+      }
+    });
+
     // ── Load diagram ─────────────────────────────────────────────────────────
 
     try {

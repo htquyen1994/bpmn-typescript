@@ -98,6 +98,19 @@ export class CustomPropertiesProvider {
     if (this._currentElementId === elementId) this._render();
   }
 
+  // ── Store reset ────────────────────────────────────────────────────────────
+
+  /**
+   * Clear all cached values and reset the current-element pointer.
+   * Called after importXML on a tab switch so stale in-memory data is discarded.
+   */
+  clearStore(): void {
+    this._store.clear();
+    this._currentElementId = null;
+    this._errors = {};
+    this._render();
+  }
+
   // ── Validation ─────────────────────────────────────────────────────────────
 
   validate(): boolean {

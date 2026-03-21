@@ -1,6 +1,7 @@
 import Modeler from 'bpmn-js/lib/Modeler';
 import NavigatedViewer from 'bpmn-js/lib/NavigatedViewer';
 import type { BpmnElement } from '../types/index.js';
+import type { ViewboxSnapshot } from '../multi/types.js';
 
 // ─── Typed interfaces for bpmn-js internal services ─────────────────────────
 
@@ -120,6 +121,28 @@ export class BpmnModelerExtender {
       name: el.businessObject?.name,
       parent: el.parent ? { id: el.parent.id } : undefined,
     };
+  }
+
+  // ── Viewport ───────────────────────────────────────────────────────────────
+
+  /** Capture the current canvas viewport (zoom + scroll). Returns null on error. */
+  getViewbox(): ViewboxSnapshot | null {
+    try {
+      const vb = this.canvas.viewbox();
+      return { x: vb.x, y: vb.y, width: vb.width, height: vb.height };
+    } catch {
+      return null;
+    }
+  }
+
+  /** Restore a previously captured viewport snapshot. */
+  setViewbox(viewbox: ViewboxSnapshot): void {
+    try {
+      (this.canvas as any).viewbox({
+        x: viewbox.x, y: viewbox.y,
+        width: viewbox.width, height: viewbox.height,
+      });
+    } catch { /* ignore */ }
   }
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────

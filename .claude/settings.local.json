@@ -19,7 +19,8 @@
       "Bash(grep -A 20 '\"\"AsyncCapable\"\"' D:/projects/bpmn-js/node_modules/activiti-bpmn-moddle/resources/activiti.json)",
       "Bash(grep -A 20 '\"\"FormSupported\"\"' D:/projects/bpmn-js/node_modules/activiti-bpmn-moddle/resources/activiti.json)",
       "Bash(ls D:/projects/bpmn-js/*.md)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(ls D:/projects/bpmn-js/dist/*.d.ts)"
     ]
   }
 }
