@@ -19,6 +19,9 @@ import { BaseComponent } from '../base/base-component.js';
 import { BpmnModelerExtender } from './bpmn-modeler-extender.js';
 import { ActivitiPropertiesProviderModule } from './activiti-properties-provider.js';
 import { ReusableSubprocessModule, SubprocessCreator, SubprocessStore } from './reusable-subprocess/index.js';
+import { TaskTypePaletteModule } from './task-type-palette/index.js';
+import { CustomPropertiesModule } from './custom-properties/index.js';
+import type { CustomPropertyConfig } from '../custom-panel/types.js';
 import type { BpmStudioMode, BpmnProvider, BpmnEventType, BpmnEventCallback, BpmnElement } from '../types/index.js';
 
 /**
@@ -37,6 +40,8 @@ export class CspBpmnStudioElement extends BaseComponent {
   private modeler:                    BpmnModelerExtender | null = null;
   private canvasContainer:            HTMLDivElement | null = null;
   private propertiesPanelContainer:   HTMLDivElement | null = null;
+  private customPanelContainer:       HTMLDivElement | null = null;
+  private customPanelToggle:          HTMLDivElement | null = null;
   private toolbarContainer:           HTMLDivElement | null = null;
   private fileInput:                  HTMLInputElement | null = null;
   private mode:                       BpmStudioMode = 'modeler';
@@ -133,6 +138,30 @@ export class CspBpmnStudioElement extends BaseComponent {
   }
 
   // ---------------------------------------------------------------------------
+  // Custom Properties Panel API (delegated to CustomPropertiesProvider)
+  // ---------------------------------------------------------------------------
+
+  registerCustomPropertyForType(bpmnType: string, configs: CustomPropertyConfig[]): void {
+    this.modeler?.customPropertiesProvider?.registerForType(bpmnType, configs);
+  }
+
+  registerCustomPropertyForElement(elementId: string, configs: CustomPropertyConfig[]): void {
+    this.modeler?.customPropertiesProvider?.registerForElement(elementId, configs);
+  }
+
+  getCustomValues(elementId: string): Record<string, unknown> {
+    return this.modeler?.customPropertiesProvider?.getValues(elementId) ?? {};
+  }
+
+  setCustomValues(elementId: string, values: Record<string, unknown>): void {
+    this.modeler?.customPropertiesProvider?.setValues(elementId, values);
+  }
+
+  validateCustomProperties(): boolean {
+    return this.modeler?.customPropertiesProvider?.validate() ?? true;
+  }
+
+  // ---------------------------------------------------------------------------
   // Private – layout
   // ---------------------------------------------------------------------------
 
@@ -181,6 +210,16 @@ export class CspBpmnStudioElement extends BaseComponent {
       .bpmn-btn:hover { background: #e8f0fe; border-color: #4a90d9; color: #1a73e8; }
 
       /* ── Palette custom icons ───────────────────────────────────────────── */
+      /* Three-dots "More task types" button */
+      .djs-palette .entry.csp-palette-task-type-more {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='5' cy='12' r='2.5' fill='%23333'/%3E%3Ccircle cx='12' cy='12' r='2.5' fill='%23333'/%3E%3Ccircle cx='19' cy='12' r='2.5' fill='%23333'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: center;
+        background-size: 60%;
+      }
+      .djs-palette .entry.csp-palette-task-type-more:hover {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='5' cy='12' r='2.5' fill='%231a73e8'/%3E%3Ccircle cx='12' cy='12' r='2.5' fill='%231a73e8'/%3E%3Ccircle cx='19' cy='12' r='2.5' fill='%231a73e8'/%3E%3C/svg%3E");
+      }
       /* Import SubProcess – upload arrow */
       .djs-palette .entry.csp-palette-import-sp {
         background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23333' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4'/%3E%3Cpolyline points='17 8 12 3 7 8'/%3E%3Cline x1='12' y1='3' x2='12' y2='15'/%3E%3C/svg%3E");
@@ -213,13 +252,50 @@ export class CspBpmnStudioElement extends BaseComponent {
         overflow-y: auto;
         max-height: calc(100vh - 120px);
       }
-      .bpmn-properties-container {
+      /* ── Right panel (bpmn-js props + custom panel) ────────────────────── */
+      .bpmn-right-panel {
         width: 300px;
         min-width: 300px;
+        display: flex;
+        flex-direction: column;
         border-left: 1px solid #e0e0e0;
+        overflow: hidden;
+      }
+      .bpmn-properties-container {
+        flex: 1;
+        min-height: 80px;
         overflow-y: auto;
         background: #fafafa;
       }
+      /* ── Custom panel toggle ─────────────────────────────────────────────── */
+      .csp-custom-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 6px 12px;
+        background: #eeeeee;
+        border-top: 1px solid #d5d5d5;
+        border-bottom: 1px solid #d5d5d5;
+        cursor: pointer;
+        flex-shrink: 0;
+        font-family: system-ui, sans-serif;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+        color: #555;
+        user-select: none;
+      }
+      .csp-custom-toggle:hover { background: #e2e2e2; }
+      .csp-custom-toggle-arrow { font-size: 10px; }
+      /* ── Custom panel body ───────────────────────────────────────────────── */
+      .csp-custom-panel-body {
+        height: 300px;
+        overflow-y: auto;
+        background: #fafafa;
+        flex-shrink: 0;
+      }
+      .csp-custom-panel-body.csp-collapsed { display: none; }
     `);
   }
 
@@ -256,17 +332,44 @@ export class CspBpmnStudioElement extends BaseComponent {
     this.canvasContainer.className = 'bpmn-canvas-container';
     mainArea.appendChild(this.canvasContainer);
 
+    // ── Right panel: bpmn-js properties + custom properties ──────────────────
+    const rightPanel = document.createElement('div');
+    rightPanel.className = 'bpmn-right-panel';
+    mainArea.appendChild(rightPanel);
+
     this.propertiesPanelContainer = document.createElement('div');
     this.propertiesPanelContainer.className = 'bpmn-properties-container';
-    mainArea.appendChild(this.propertiesPanelContainer);
+    rightPanel.appendChild(this.propertiesPanelContainer);
+
+    // Toggle button
+    this.customPanelToggle = document.createElement('div');
+    this.customPanelToggle.className = 'csp-custom-toggle';
+    this.customPanelToggle.innerHTML =
+      '<span>Custom Properties</span><span class="csp-custom-toggle-arrow">▼</span>';
+    rightPanel.appendChild(this.customPanelToggle);
+
+    // Custom panel body (initially open)
+    this.customPanelContainer = document.createElement('div');
+    this.customPanelContainer.className = 'csp-custom-panel-body';
+    rightPanel.appendChild(this.customPanelContainer);
+
+    this.customPanelToggle.addEventListener('click', () => {
+      const collapsed = this.customPanelContainer!.classList.toggle('csp-collapsed');
+      this.customPanelToggle!.querySelector('.csp-custom-toggle-arrow')!.textContent =
+        collapsed ? '▶' : '▼';
+    });
 
     this.applyModeLayout();
   }
 
   private applyModeLayout(): void {
     const isModeler = this.mode === 'modeler';
-    if (this.toolbarContainer)          this.toolbarContainer.style.display           = isModeler ? '' : 'none';
-    if (this.propertiesPanelContainer)  this.propertiesPanelContainer.style.display   = isModeler ? '' : 'none';
+    if (this.toolbarContainer)     this.toolbarContainer.style.display     = isModeler ? '' : 'none';
+    // Hide the whole right panel (both bpmn-js props + custom panel) in viewer mode.
+    if (this.propertiesPanelContainer) {
+      const rightPanel = this.propertiesPanelContainer.parentElement;
+      if (rightPanel) rightPanel.style.display = isModeler ? '' : 'none';
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -288,13 +391,18 @@ export class CspBpmnStudioElement extends BaseComponent {
       BpmnPropertiesProviderModule,
       GridModule,
       ReusableSubprocessModule,
+      TaskTypePaletteModule,
+      CustomPropertiesModule,
     ];
 
-    const moddleExtensions: Record<string, object> = {};
+    // activiti moddle is always registered so activiti:Properties can be used
+    // as the extensionElements storage format regardless of the active provider.
+    const moddleExtensions: Record<string, object> = {
+      activiti: activitiModdle,
+    };
 
     if (this.provider === 'activiti') {
       additionalModules.push(ActivitiPropertiesProviderModule);
-      moddleExtensions['activiti'] = activitiModdle;
     } else if (this.provider === 'camunda') {
       additionalModules.push(CamundaPlatformPropertiesProviderModule);
       moddleExtensions['camunda'] = camundaModdle;
@@ -308,6 +416,11 @@ export class CspBpmnStudioElement extends BaseComponent {
         moddleExtensions,
       }),
     );
+
+    // Wire custom panel container into the provider.
+    if (this.customPanelContainer) {
+      this.modeler.customPropertiesProvider?.setContainer(this.customPanelContainer);
+    }
 
     this.wireSubprocessEvents();
   }

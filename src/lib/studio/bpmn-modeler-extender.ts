@@ -81,9 +81,18 @@ export class BpmnModelerExtender {
     return this._instance.get('moddle');
   }
 
+  get modeling(): any {
+    return this._instance.get('modeling') as any;
+  }
+
   /** The in-memory store for reusable SubProcess XML snippets (modeler mode only). */
   get subprocessStore(): any {
     try { return this._instance.get('subprocessStore'); } catch { return null; }
+  }
+
+  /** Custom-properties provider (modeler mode only). */
+  get customPropertiesProvider(): any {
+    try { return this._instance.get('customPropertiesProvider'); } catch { return null; }
   }
 
   // ── Diagram operations ─────────────────────────────────────────────────────

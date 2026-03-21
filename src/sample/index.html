@@ -13,24 +13,38 @@
     .toolbar {
       display: flex; gap: 8px; padding: 8px 12px;
       background: #f4f4f5; border-bottom: 1px solid #d4d4d8;
-      flex-wrap: wrap;
+      flex-wrap: wrap; align-items: center;
     }
     .toolbar button {
-      padding: 6px 14px; border: 1px solid #a1a1aa; border-radius: 4px;
-      background: #fff; cursor: pointer; font-size: 13px;
+      padding: 5px 12px; border: 1px solid #a1a1aa; border-radius: 4px;
+      background: #fff; cursor: pointer; font-size: 12px; color: #333;
     }
     .toolbar button:hover { background: #e4e4e7; }
-
-    .main { display: flex; flex: 1; min-height: 0; }
-
-    #diagram-container {
-      flex: 1; position: relative;
+    .toolbar button.primary {
+      background: #1a73e8; color: #fff; border-color: #1a73e8;
+    }
+    .toolbar button.primary:hover { background: #1557b0; }
+    .toolbar-sep {
+      width: 1px; height: 20px; background: #d4d4d8; margin: 0 2px;
     }
 
+    .hint {
+      padding: 6px 14px;
+      background: #fffbeb;
+      border-bottom: 1px solid #fcd34d;
+      font-size: 12px;
+      color: #78350f;
+      flex-shrink: 0;
+    }
+
+    .main { display: flex; flex: 1; min-height: 0; overflow: hidden; }
+
+    #diagram-container { flex: 1; position: relative; min-width: 0; }
+
     #output {
-      width: 320px; padding: 10px; overflow: auto;
+      width: 300px; min-width: 300px; padding: 10px; overflow-y: auto;
       background: #1e1e2e; color: #cdd6f4; font-family: monospace;
-      font-size: 12px; white-space: pre-wrap; border-left: 1px solid #313244;
+      font-size: 11px; white-space: pre-wrap; border-left: 1px solid #313244;
     }
   </style>
 </head>
@@ -42,13 +56,23 @@
     <button id="btn-export-xml">Export XML</button>
     <button id="btn-download-xml">⬇ Download XML</button>
     <button id="btn-export-svg">Export SVG</button>
+    <div class="toolbar-sep"></div>
     <button id="btn-zoom-in">Zoom +</button>
     <button id="btn-zoom-out">Zoom −</button>
     <button id="btn-zoom-fit">Fit</button>
     <button id="btn-zoom-reset">1:1</button>
     <button id="btn-undo">Undo</button>
     <button id="btn-redo">Redo</button>
+    <div class="toolbar-sep"></div>
+    <button id="btn-validate" class="primary">Validate</button>
+    <button id="btn-get-values">Get Values</button>
+    <div class="toolbar-sep"></div>
     <button id="btn-destroy">Destroy</button>
+  </div>
+
+  <div class="hint">
+    Click a <strong>User Task</strong> or <strong>Service Task</strong> to see custom properties in the right panel.
+    The <em>Assignee</em> field simulates an async API call (500 ms delay).
   </div>
 
   <div class="main">
