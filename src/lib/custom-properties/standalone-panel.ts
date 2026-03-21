@@ -3,7 +3,7 @@ import type { CustomPropertyConfig, ValidationErrors } from './types.js';
 import { ValidationEngine } from './validation.js';
 import { PanelView } from './panel-view.js';
 import type { PanelViewCallbacks } from './panel-view.js';
-import { PANEL_STYLES } from './styles.js';
+import { PANEL_STYLES, THEME_CSS } from './styles.js';
 
 // Ensure built-in renderers are registered.
 import './renderers/index.js';
@@ -154,11 +154,15 @@ export class CustomPropertiesPanel {
   }
 
   private _injectStyles(): void {
-    const id = 'csp-custom-properties-panel';
+    this._injectOnce('csp-theme',                  THEME_CSS);
+    this._injectOnce('csp-custom-properties-panel', PANEL_STYLES);
+  }
+
+  private _injectOnce(id: string, css: string): void {
     if (document.head.querySelector(`style[data-csp-id="${id}"]`)) return;
     const style = document.createElement('style');
     style.setAttribute('data-csp-id', id);
-    style.textContent = PANEL_STYLES;
+    style.textContent = css;
     document.head.appendChild(style);
   }
 }

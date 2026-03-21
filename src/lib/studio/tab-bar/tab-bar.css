@@ -2,15 +2,15 @@
 .csp-tab-bar {
   display: flex;
   align-items: center;
-  background: #efefef;
-  border-top: 1px solid #c8c8c8;
-  height: 34px;
+  background: var(--csp-color-surface);
+  border-top: 1px solid var(--csp-color-border-strong);
+  height: var(--csp-sz-tab-bar);
   flex-shrink: 0;
-  padding: 0 6px 0 0;
+  padding: 0 var(--csp-space-3) 0 0;
   overflow: hidden;
 }
 
-/* ── Scrollable tab list ─────────────────────────────────────────────────── */
+/* ── Scrollable tab list ──────────────────────────────────────────────────── */
 .csp-tab-list {
   display: flex;
   align-items: flex-end;
@@ -22,42 +22,42 @@
 }
 .csp-tab-list::-webkit-scrollbar { display: none; }
 
-/* ── Individual tab ──────────────────────────────────────────────────────── */
+/* ── Individual tab ───────────────────────────────────────────────────────── */
 .csp-tab {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  height: 28px;
-  padding: 0 6px 0 10px;
+  gap: var(--csp-space-2);
+  height: var(--csp-sz-tab);
+  padding: 0 var(--csp-space-3) 0 var(--csp-space-5);
   border: 1px solid transparent;
   border-bottom: none;
-  border-radius: 4px 4px 0 0;
-  background: #e0e0e0;
-  color: #666;
+  border-radius: var(--csp-radius-md) var(--csp-radius-md) 0 0;
+  background: var(--csp-color-surface-active);
+  color: var(--csp-color-text-muted);
   cursor: pointer;
-  font-family: system-ui, sans-serif;
-  font-size: 12px;
+  font-family: var(--csp-font-family);
+  font-size: var(--csp-fs-sm);
   white-space: nowrap;
   user-select: none;
-  margin-right: 2px;
-  max-width: 180px;
+  margin-right: var(--csp-space-1);
+  max-width: var(--csp-sz-tab-max-w);
   position: relative;
   bottom: -1px;
   flex-shrink: 0;
-  transition: background 0.12s;
+  transition: background var(--csp-transition-base);
 }
-.csp-tab:hover { background: #e9e9e9; color: #333; }
+.csp-tab:hover { background: var(--csp-color-surface-hover); color: var(--csp-color-text); }
 
-/* ── Active tab ──────────────────────────────────────────────────────────── */
+/* ── Active tab ───────────────────────────────────────────────────────────── */
 .csp-tab--active {
-  background: #ffffff;
-  color: #1a1a1a;
-  border-color: #c8c8c8;
-  font-weight: 500;
+  background: var(--csp-color-bg);
+  color: var(--csp-color-text-strong);
+  border-color: var(--csp-color-border-strong);
+  font-weight: var(--csp-fw-medium);
   z-index: 1;
 }
 
-/* ── Tab label ───────────────────────────────────────────────────────────── */
+/* ── Tab label ────────────────────────────────────────────────────────────── */
 .csp-tab-label {
   flex: 1;
   min-width: 0;
@@ -65,54 +65,58 @@
   text-overflow: ellipsis;
 }
 
-/* ── Dirty dot ───────────────────────────────────────────────────────────── */
+/* ── Dirty dot ────────────────────────────────────────────────────────────── */
 .csp-tab-dirty {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #f59e0b;
+  width: var(--csp-sz-dirty-dot);
+  height: var(--csp-sz-dirty-dot);
+  border-radius: var(--csp-radius-full);
+  background: var(--csp-color-warning);
   flex-shrink: 0;
 }
 
-/* ── Close button ────────────────────────────────────────────────────────── */
+/* ── Close button ─────────────────────────────────────────────────────────── */
 .csp-tab-close {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
+  width: var(--csp-sz-btn-close);
+  height: var(--csp-sz-btn-close);
   border: none;
-  border-radius: 3px;
+  border-radius: var(--csp-radius-sm);
   background: transparent;
-  color: #999;
+  color: var(--csp-color-text-placeholder);
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--csp-fs-md);
   line-height: 1;
   padding: 0;
   flex-shrink: 0;
   opacity: 0;
-  transition: opacity 0.1s, background 0.1s;
+  transition: opacity var(--csp-transition-fast), background var(--csp-transition-fast);
 }
 .csp-tab:hover .csp-tab-close,
 .csp-tab--active .csp-tab-close { opacity: 1; }
-.csp-tab-close:hover { background: #fecaca; color: #b91c1c; }
+.csp-tab-close:hover { background: var(--csp-color-danger-hover); color: var(--csp-color-danger-dark); }
 
-/* ── Add tab button ──────────────────────────────────────────────────────── */
+/* ── Add tab button ───────────────────────────────────────────────────────── */
 .csp-tab-add {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
+  width: var(--csp-sz-btn-sm);
+  height: var(--csp-sz-btn-sm);
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: var(--csp-radius-md);
   background: transparent;
-  color: #666;
+  color: var(--csp-color-text-muted);
   cursor: pointer;
-  font-size: 18px;
+  font-size: var(--csp-fs-lg);
   line-height: 1;
   flex-shrink: 0;
-  margin-left: 4px;
-  transition: background 0.12s, color 0.12s;
+  margin-left: var(--csp-space-2);
+  transition: background var(--csp-transition-base), color var(--csp-transition-base);
 }
-.csp-tab-add:hover { background: #ddd; color: #333; border-color: #bbb; }
+.csp-tab-add:hover {
+  background: var(--csp-color-surface-raised);
+  color: var(--csp-color-text);
+  border-color: var(--csp-color-border-strong);
+}

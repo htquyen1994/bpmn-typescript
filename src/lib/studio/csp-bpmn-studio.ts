@@ -18,6 +18,7 @@ import { StudioLayout } from './studio-layout.js';
 import { CanvasControls } from './canvas-controls.js';
 import { BPMN_CORE_CSS, BPMN_PROPERTIES_CSS, STUDIO_LAYOUT_CSS } from './studio-styles.js';
 import { MinimapModule, MINIMAP_CSS } from './minimap/index.js';
+import { THEME_CSS } from '../theme/index.js';
 import type { LayoutElements } from './studio-layout.js';
 import type { DiagramTabState, AddTabConfig as TabAddConfig } from '../multi/types.js';
 import type { CustomPropertyConfig } from '../custom-properties/types.js';
@@ -236,6 +237,7 @@ export class CspBpmnStudioElement extends BaseComponent {
   // ---------------------------------------------------------------------------
 
   private _injectStyles(): void {
+    this.addStyles('csp-theme',           THEME_CSS);
     this.addStyles('bpmn-core',           BPMN_CORE_CSS);
     this.addStyles('bpmn-properties-panel', BPMN_PROPERTIES_CSS);
     this.addStyles('bpmn-studio-layout',  STUDIO_LAYOUT_CSS);
