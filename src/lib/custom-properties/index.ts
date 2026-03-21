@@ -28,10 +28,10 @@ export { PanelView } from './panel-view.js';
 export type { PanelViewCallbacks } from './panel-view.js';
 
 // ── BPMN extension mapper ─────────────────────────────────────────────────────
-export { ExtensionMapper } from './extension-mapper.js';
+export { ExtensionMapper } from './bpmn/extension-mapper.js';
 
 // ── bpmn-js provider + DI module ─────────────────────────────────────────────
-export { BpmnPropertiesProvider, CustomPropertiesModule } from './bpmn-provider.js';
+export { BpmnPropertiesProvider, CustomPropertiesModule } from './bpmn/bpmn-provider.js';
 
 // ── Standalone host-page panel ────────────────────────────────────────────────
 export { CustomPropertiesPanel } from './standalone-panel.js';

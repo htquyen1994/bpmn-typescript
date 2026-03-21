@@ -6,23 +6,23 @@ import GridModule from 'diagram-js-grid';
 import activitiModdle from 'activiti-bpmn-moddle/resources/activiti.json';
 import camundaModdle from 'camunda-bpmn-moddle/resources/camunda.json';
 
-import { BaseComponent } from '../base/base-component.js';
+import { BaseComponent } from '../core/base-component.js';
 import { BpmnModelerExtender } from './bpmn-modeler-extender.js';
-import { ActivitiPropertiesProviderModule } from './activiti-properties-provider.js';
-import { ReusableSubprocessModule, SubprocessCreator, SubprocessStore } from './reusable-subprocess/index.js';
-import { TaskTypePaletteModule } from './task-type-palette/index.js';
-import { CustomPropertiesModule } from '../custom-properties/bpmn-provider.js';
-import { TabManager } from '../multi/tab-manager.js';
-import { TabBarUI } from './tab-bar/index.js';
+import { ActivitiPropertiesProviderModule } from '../plugins/activiti-provider.js';
+import { ReusableSubprocessModule, SubprocessCreator, SubprocessStore } from '../plugins/reusable-subprocess/index.js';
+import { TaskTypePaletteModule } from '../plugins/task-type-palette/index.js';
+import { CustomPropertiesModule } from '../custom-properties/bpmn/bpmn-provider.js';
+import { TabManager } from '../tabs/tab-manager.js';
+import { TabBarUI } from '../tabs/tab-bar/index.js';
 import { StudioLayout } from './studio-layout.js';
-import { CanvasControls } from './canvas-controls.js';
+import { CanvasControls } from './canvas-controls/canvas-controls.js';
 import { BPMN_CORE_CSS, BPMN_PROPERTIES_CSS, STUDIO_LAYOUT_CSS } from './studio-styles.js';
-import { MinimapModule, MINIMAP_CSS } from './minimap/index.js';
+import { MinimapModule, MINIMAP_CSS } from '../plugins/minimap/index.js';
 import { THEME_CSS } from '../theme/index.js';
 import type { LayoutElements } from './studio-layout.js';
-import type { DiagramTabState, AddTabConfig as TabAddConfig } from '../multi/types.js';
+import type { DiagramTabState, AddTabConfig as TabAddConfig } from '../tabs/types.js';
 import type { CustomPropertyConfig } from '../custom-properties/types.js';
-import type { BpmStudioMode, BpmnProvider, BpmnEventType, BpmnEventCallback, BpmnElement } from '../types/index.js';
+import type { BpmStudioMode, BpmnProvider, BpmnEventType, BpmnEventCallback, BpmnElement } from '../types.js';
 
 // ── Minimal blank BPMN 2.0 diagram ────────────────────────────────────────────
 

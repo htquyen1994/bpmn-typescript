@@ -1,4 +1,4 @@
-import type { BpmnElement } from '../types/index.js';
+import type { BpmnElement } from '../types.js';
 import type { CustomPropertyConfig, ValidationErrors } from './types.js';
 import { ValidationEngine } from './validation.js';
 import { PanelView } from './panel-view.js';

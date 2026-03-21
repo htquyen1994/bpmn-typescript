@@ -1,4 +1,6 @@
-import type { CustomPropertyConfig } from './types.js';
+import type { CustomPropertyConfig } from '../types.js';
+import type { BpmnElementRegistry, BpmnDiagramElement } from '../../studio/bpmn-modeler-extender.js';
+import type { BpmnModdle, BpmnModeling, ActivitiProperties, BpmnBaseObject } from '../../core/bpmn-types.js';
 
 /**
  * Handles reading from and writing to `bpmn:ExtensionElements` →
@@ -13,9 +15,9 @@ import type { CustomPropertyConfig } from './types.js';
  */
 export class ExtensionMapper {
   constructor(
-    private readonly _elementRegistry: any,
-    private readonly _moddle: any,
-    private readonly _modeling: any,
+    private readonly _elementRegistry: BpmnElementRegistry,
+    private readonly _moddle: BpmnModdle,
+    private readonly _modeling: BpmnModeling,
   ) {}
 
   // ── Read ──────────────────────────────────────────────────────────────────
@@ -32,7 +34,7 @@ export class ExtensionMapper {
     if (!extEl?.values) return {};
 
     const activitiProps = extEl.values.find(
-      (v: any) => v.$type === 'activiti:Properties',
+      (v): v is ActivitiProperties => v.$type === 'activiti:Properties',
     );
     if (!activitiProps?.values) return {};
 
@@ -64,7 +66,7 @@ export class ExtensionMapper {
       : moddle.create('bpmn:ExtensionElements', { values: [] });
 
     // Drop previous activiti:Properties block; rebuild it fully.
-    extEl.values = extEl.values.filter((v: any) => v.$type !== 'activiti:Properties');
+    extEl.values = (extEl.values ?? []).filter((v: BpmnBaseObject) => v.$type !== 'activiti:Properties');
 
     const propEntries = Object.entries(values)
       .filter(([, v]) => v !== undefined && v !== null && v !== '')
@@ -92,7 +94,7 @@ export class ExtensionMapper {
 
   // ── Element access ────────────────────────────────────────────────────────
 
-  getElement(elementId: string): any {
+  getElement(elementId: string): BpmnDiagramElement | undefined {
     return this._elementRegistry.get(elementId);
   }
 }

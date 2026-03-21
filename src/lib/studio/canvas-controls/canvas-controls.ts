@@ -9,7 +9,7 @@ import exportSvgIcon from './icons/export-svg.svg?raw';
 // @ts-ignore
 import minimapIcon from './icons/minimap.svg?raw';
 
-import { UIComponent } from '../base/ui-component.js';
+import { UIComponent } from '../../core/ui-component.js';
 
 export interface CanvasControlsCallbacks {
   onZoomIn(): void;

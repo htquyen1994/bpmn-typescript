@@ -1,4 +1,6 @@
 import type { SubprocessStore } from './subprocess-store.js';
+import type { BpmnCanvas, BpmnEventBus } from '../../studio/bpmn-modeler-extender.js';
+import type { BpmnPalette, BpmnPopupMenu } from '../../core/bpmn-types.js';
 
 /**
  * Adds two entries to the bpmn-js palette:
@@ -9,16 +11,16 @@ export class SubprocessPaletteProvider {
   static $inject = ['palette', 'subprocessStore', 'popupMenu', 'eventBus', 'canvas'];
 
   private readonly _subprocessStore: SubprocessStore;
-  private readonly _popupMenu: any;
-  private readonly _eventBus: any;
-  private readonly _canvas: any;
+  private readonly _popupMenu: BpmnPopupMenu;
+  private readonly _eventBus: BpmnEventBus;
+  private readonly _canvas: BpmnCanvas;
 
   constructor(
-    palette: any,
+    palette: BpmnPalette,
     subprocessStore: SubprocessStore,
-    popupMenu: any,
-    eventBus: any,
-    canvas: any,
+    popupMenu: BpmnPopupMenu,
+    eventBus: BpmnEventBus,
+    canvas: BpmnCanvas,
   ) {
     palette.registerProvider(500, this);
     this._subprocessStore = subprocessStore;

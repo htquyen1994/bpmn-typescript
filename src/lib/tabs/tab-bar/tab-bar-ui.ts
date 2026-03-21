@@ -1,9 +1,9 @@
 // @ts-ignore – Vite ?inline resolves at build time
 import tabBarCss from './tab-bar.css?inline';
 
-import { UIComponent } from '../../base/ui-component.js';
-import type { TabManager } from '../../multi/tab-manager.js';
-import type { DiagramTabState } from '../../multi/types.js';
+import { UIComponent } from '../../core/ui-component.js';
+import type { TabManager } from '../tab-manager.js';
+import type { DiagramTabState } from '../types.js';
 
 /** Callbacks the tab bar delegates user gestures to. */
 export interface TabBarCallbacks {

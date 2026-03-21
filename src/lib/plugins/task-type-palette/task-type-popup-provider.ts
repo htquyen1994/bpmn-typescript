@@ -1,3 +1,6 @@
+import type { BpmnCanvas } from '../../studio/bpmn-modeler-extender.js';
+import type { BpmnModeling, BpmnElementFactory, BpmnPopupMenu } from '../../core/bpmn-types.js';
+
 /**
  * Registers a popup-menu provider under the key `'bpmn-task-types'`.
  *
@@ -8,11 +11,16 @@
 export class TaskTypePopupProvider {
   static $inject = ['popupMenu', 'elementFactory', 'modeling', 'canvas'];
 
-  private readonly _elementFactory: any;
-  private readonly _modeling: any;
-  private readonly _canvas: any;
+  private readonly _elementFactory: BpmnElementFactory;
+  private readonly _modeling: BpmnModeling;
+  private readonly _canvas: BpmnCanvas;
 
-  constructor(popupMenu: any, elementFactory: any, modeling: any, canvas: any) {
+  constructor(
+    popupMenu: BpmnPopupMenu,
+    elementFactory: BpmnElementFactory,
+    modeling: BpmnModeling,
+    canvas: BpmnCanvas,
+  ) {
     popupMenu.registerProvider('bpmn-task-types', 1500, this);
     this._elementFactory = elementFactory;
     this._modeling       = modeling;

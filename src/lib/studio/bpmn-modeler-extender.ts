@@ -1,7 +1,16 @@
 import Modeler from 'bpmn-js/lib/Modeler';
 import NavigatedViewer from 'bpmn-js/lib/NavigatedViewer';
-import type { BpmnElement } from '../types/index.js';
-import type { ViewboxSnapshot } from '../multi/types.js';
+import type { BpmnElement } from '../types.js';
+import type { ViewboxSnapshot } from '../tabs/types.js';
+import type {
+  BpmnDiagramElement,
+  BpmnModdle,
+  BpmnModeling,
+  BpmnMinimap,
+  SelectionChangedEvent,
+} from '../core/bpmn-types.js';
+
+export type { BpmnDiagramElement };
 
 // ─── Typed interfaces for bpmn-js internal services ─────────────────────────
 
@@ -19,12 +28,14 @@ export interface BpmnCanvas {
   getRootElement(): { id: string; type: string };
   getContainer(): HTMLElement;
   viewbox(): BpmnViewbox;
+  viewbox(box: { x: number; y: number; width: number; height: number }): void;
 }
 
 export interface BpmnEventBus {
-  on(event: string, callback: (e: any) => void): void;
-  off(event: string, callback: (e: any) => void): void;
-  fire(event: string, data?: any): void;
+  on(event: 'selection.changed', callback: (e: SelectionChangedEvent) => void): void;
+  on(event: string, callback: (e: Record<string, unknown>) => void): void;
+  off(event: string, callback: (e: Record<string, unknown>) => void): void;
+  fire(event: string, data?: Record<string, unknown>): void;
 }
 
 export interface BpmnCommandStack {
@@ -35,9 +46,9 @@ export interface BpmnCommandStack {
 }
 
 export interface BpmnElementRegistry {
-  get(id: string): any;
-  getAll(): any[];
-  filter(fn: (el: any) => boolean): any[];
+  get(id: string): BpmnDiagramElement | undefined;
+  getAll(): BpmnDiagramElement[];
+  filter(fn: (el: BpmnDiagramElement) => boolean): BpmnDiagramElement[];
 }
 
 // ─── Type alias for a raw bpmn-js instance ──────────────────────────────────
@@ -78,27 +89,29 @@ export class BpmnModelerExtender {
   }
 
   /** Raw bpmn-js moddle instance – used for low-level XML parse / serialise. */
-  get moddle(): any {
-    return this._instance.get('moddle');
+  get moddle(): BpmnModdle {
+    return this._instance.get('moddle') as BpmnModdle;
   }
 
-  get modeling(): any {
-    return this._instance.get('modeling') as any;
+  get modeling(): BpmnModeling {
+    return this._instance.get('modeling') as BpmnModeling;
   }
 
   /** The in-memory store for reusable SubProcess XML snippets (modeler mode only). */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   get subprocessStore(): any {
     try { return this._instance.get('subprocessStore'); } catch { return null; }
   }
 
   /** Custom-properties provider (modeler mode only). */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   get customPropertiesProvider(): any {
     try { return this._instance.get('customPropertiesProvider'); } catch { return null; }
   }
 
   /** Minimap service (modeler mode only). */
-  get minimap(): any {
-    try { return this._instance.get('minimap'); } catch { return null; }
+  get minimap(): BpmnMinimap | null {
+    try { return this._instance.get('minimap') as BpmnMinimap; } catch { return null; }
   }
 
   // ── Diagram operations ─────────────────────────────────────────────────────
@@ -143,7 +156,7 @@ export class BpmnModelerExtender {
   /** Restore a previously captured viewport snapshot. */
   setViewbox(viewbox: ViewboxSnapshot): void {
     try {
-      (this.canvas as any).viewbox({
+      this.canvas.viewbox({
         x: viewbox.x, y: viewbox.y,
         width: viewbox.width, height: viewbox.height,
       });

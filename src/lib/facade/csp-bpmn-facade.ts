@@ -1,6 +1,6 @@
-import type { CSPBpmConfig, BpmStudioMode, BpmnEventType, BpmnEventCallback } from '../types/index.js';
+import type { CSPBpmConfig, BpmStudioMode, BpmnEventType, BpmnEventCallback } from '../types.js';
 import type { StudioComponent } from '../studio/csp-bpmn-studio.js';
-import type { DiagramTabState, AddTabConfig as TabAddConfig } from '../multi/types.js';
+import type { DiagramTabState, AddTabConfig as TabAddConfig } from '../tabs/types.js';
 
 // Phase 1 output — the entire studio compiled to an IIFE string, inlined at build time.
 // @ts-ignore – ?raw is a Vite build-time suffix; the file is produced by Phase 1.

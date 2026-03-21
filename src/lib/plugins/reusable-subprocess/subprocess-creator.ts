@@ -1,5 +1,10 @@
 import type { SubprocessItem } from './subprocess-store.js';
-import type { BpmnModelerExtender } from '../bpmn-modeler-extender.js';
+import type { BpmnModelerExtender } from '../../studio/bpmn-modeler-extender.js';
+import type {
+  BpmnFromXmlResult,
+  BpmnProcess,
+  BpmnDiPlane,
+} from '../../core/bpmn-types.js';
 
 /**
  * Merges a stored SubProcess XML into the live diagram and re-imports.
@@ -24,8 +29,8 @@ export class SubprocessCreator {
     if (!currentXml) throw new Error('Cannot save current diagram XML');
 
     // ── 2. Parse both XMLs ──────────────────────────────────────────────────
-    const { rootElement: currentDefs } = await moddle.fromXML(currentXml) as { rootElement: any };
-    const { rootElement: sourceDefs }  = await moddle.fromXML(item.xml)   as { rootElement: any };
+    const { rootElement: currentDefs } = await moddle.fromXML(currentXml) as BpmnFromXmlResult;
+    const { rootElement: sourceDefs }  = await moddle.fromXML(item.xml)   as BpmnFromXmlResult;
 
     // ── 3. Remap all IDs in source to avoid collisions ──────────────────────
     const prefix = 'rsp' + Date.now().toString(36).slice(-5) + '_';
@@ -33,24 +38,24 @@ export class SubprocessCreator {
     this._remapIds(sourceDefs, prefix);
 
     // ── 4. Locate source process & DI ───────────────────────────────────────
-    const rootEls: any[] = sourceDefs.rootElements ?? [];
-    const sourceProcess  = rootEls.find((e: any) => e.$type === 'bpmn:Process');
+    const rootEls = sourceDefs.rootElements ?? [];
+    const sourceProcess = rootEls.find((e): e is BpmnProcess => e.$type === 'bpmn:Process');
     if (!sourceProcess) throw new Error('Source XML contains no bpmn:Process');
 
-    const sourceDiagram: any = sourceDefs.diagrams?.[0];
-    const sourcePlane: any   = sourceDiagram?.plane;
+    const sourceDiagram = sourceDefs.diagrams?.[0];
+    const sourcePlane: BpmnDiPlane | undefined = sourceDiagram?.plane;
 
     // ── 5. Create collapsed SubProcess element ──────────────────────────────
-    const subProcessBo: any = moddle.create('bpmn:SubProcess', {
-      id:              spId,
-      name:            item.name,
+    const subProcessBo = moddle.create('bpmn:SubProcess', {
+      id:   spId,
+      name: item.name,
     });
     subProcessBo.flowElements = sourceProcess.flowElements ?? [];
     for (const fe of subProcessBo.flowElements) fe.$parent = subProcessBo;
 
     // ── 6. Attach to current process ────────────────────────────────────────
-    const currentProcess: any = (currentDefs.rootElements as any[])
-      .find((e: any) => e.$type === 'bpmn:Process');
+    const currentProcess = (currentDefs.rootElements ?? [])
+      .find((e): e is BpmnProcess => e.$type === 'bpmn:Process');
     if (!currentProcess) throw new Error('Current diagram contains no bpmn:Process');
 
     currentProcess.flowElements = currentProcess.flowElements ?? [];
@@ -62,29 +67,29 @@ export class SubprocessCreator {
     const dropX = Math.round(vb.x + vb.width  / 2 - 50);
     const dropY = Math.round(vb.y + vb.height / 2 - 40);
 
-    const outerShape: any = moddle.create('bpmndi:BPMNShape', {
-      id:         spId + '_di',
+    const outerShape = moddle.create('bpmndi:BPMNShape', {
+      id:          spId + '_di',
       bpmnElement: subProcessBo,
-      isExpanded: false,
+      isExpanded:  false,
     });
     outerShape.bounds = moddle.create('dc:Bounds', {
       x: dropX, y: dropY, width: 100, height: 80,
     });
 
-    const currentDiagram: any = currentDefs.diagrams?.[0];
+    const currentDiagram = currentDefs.diagrams?.[0];
     if (currentDiagram?.plane) {
       currentDiagram.plane.planeElement = currentDiagram.plane.planeElement ?? [];
       currentDiagram.plane.planeElement.push(outerShape);
     }
 
     // ── 8. Inner diagram plane (enables drill-down) ─────────────────────────
-    const innerPlane: any = moddle.create('bpmndi:BPMNPlane', {
+    const innerPlane = moddle.create('bpmndi:BPMNPlane', {
       id:          spId + '_plane',
       bpmnElement: subProcessBo,
     });
     innerPlane.planeElement = sourcePlane?.planeElement ?? [];
 
-    const innerDiagram: any = moddle.create('bpmndi:BPMNDiagram', {
+    const innerDiagram = moddle.create('bpmndi:BPMNDiagram', {
       id: 'BPMNDiagram_' + spId,
     });
     innerDiagram.plane = innerPlane;
@@ -93,7 +98,7 @@ export class SubprocessCreator {
     currentDefs.diagrams.push(innerDiagram);
 
     // ── 9. Serialize & re-import ────────────────────────────────────────────
-    const { xml: mergedXml } = await moddle.toXML(currentDefs, { format: true }) as { xml: string };
+    const { xml: mergedXml } = await moddle.toXML(currentDefs, { format: true });
     await this.extender.importXML(mergedXml);
     this.extender.canvas.zoom('fit-viewport');
   }

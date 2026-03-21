@@ -1,4 +1,6 @@
 import type { SubprocessStore, SubprocessItem } from './subprocess-store.js';
+import type { BpmnEventBus } from '../../studio/bpmn-modeler-extender.js';
+import type { BpmnPopupMenu } from '../../core/bpmn-types.js';
 
 /**
  * Registers a popup-menu provider under the key `'reusable-subprocess'`.
@@ -13,12 +15,12 @@ export class SubprocessPopupProvider {
   static $inject = ['popupMenu', 'subprocessStore', 'eventBus'];
 
   private readonly _subprocessStore: SubprocessStore;
-  private readonly _eventBus: any;
+  private readonly _eventBus: BpmnEventBus;
 
   constructor(
-    popupMenu: any,
+    popupMenu: BpmnPopupMenu,
     subprocessStore: SubprocessStore,
-    eventBus: any,
+    eventBus: BpmnEventBus,
   ) {
     popupMenu.registerProvider('reusable-subprocess', 1500, this);
     this._subprocessStore = subprocessStore;

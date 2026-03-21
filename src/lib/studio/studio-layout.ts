@@ -1,4 +1,4 @@
-import type { BpmStudioMode } from '../types/index.js';
+import type { BpmStudioMode } from '../types.js';
 
 // ── Interfaces ────────────────────────────────────────────────────────────────
 

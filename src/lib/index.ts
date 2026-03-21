@@ -18,7 +18,7 @@ export type {
 } from './custom-properties/index.js';
 
 // ── Reusable base class / advanced exports ────────────────────────────────────
-export { BaseComponent }        from './base/base-component.js';
+export { BaseComponent }  from './core/base-component.js';
 export { BpmnModelerExtender }  from './studio/bpmn-modeler-extender.js';
 export type {
   BpmnCanvas,
@@ -28,8 +28,8 @@ export type {
   BpmnElementRegistry,
 } from './studio/bpmn-modeler-extender.js';
 
-export { ReusableSubprocessModule } from './studio/reusable-subprocess/index.js';
-export type { SubprocessItem }      from './studio/reusable-subprocess/index.js';
+export { ReusableSubprocessModule } from './plugins/reusable-subprocess/index.js';
+export type { SubprocessItem }      from './plugins/reusable-subprocess/index.js';
 
 export type {
   BpmnElement,
@@ -40,10 +40,10 @@ export type {
   CSPBpmConfig,
   ExportXmlResult,
   ExportSvgResult,
-} from './types/index.js';
+} from './types.js';
 
 // ── Multi-diagram tab management ──────────────────────────────────────────────
-export { TypedEventBus, TabStore, TabManager } from './multi/index.js';
+export { TypedEventBus, TabStore, TabManager } from './tabs/index.js';
 export type {
   DiagramTabState,
   TabLifecycle,
@@ -53,4 +53,4 @@ export type {
   TabEventMap,
   TabEvent,
   BeforeActivateHook,
-} from './multi/index.js';
+} from './tabs/index.js';

@@ -1,3 +1,5 @@
+import type { BpmnEventBus } from '../../studio/bpmn-modeler-extender.js';
+
 export interface SubprocessItem {
   /** Unique key inside the store (not the BPMN id). */
   storeId: string;
@@ -14,13 +16,14 @@ export interface SubprocessItem {
  * Registered as a bpmn-js service so palette / popup providers can inject it.
  * Also accessible from outside the IoC container via BpmnModelerExtender.
  */
+
 export class SubprocessStore {
   static $inject = ['eventBus'];
 
   private readonly _items = new Map<string, SubprocessItem>();
-  private readonly _eventBus: any;
+  private readonly _eventBus: BpmnEventBus;
 
-  constructor(eventBus: any) {
+  constructor(eventBus: BpmnEventBus) {
     this._eventBus = eventBus;
   }
 

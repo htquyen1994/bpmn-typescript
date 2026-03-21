@@ -1,12 +1,14 @@
-import type { CustomPropertyConfig, ValidationErrors } from './types.js';
-import { ValidationEngine } from './validation.js';
+import type { CustomPropertyConfig, ValidationErrors } from '../types.js';
+import { ValidationEngine } from '../validation.js';
 import { ExtensionMapper } from './extension-mapper.js';
-import { PanelView } from './panel-view.js';
-import type { PanelViewCallbacks } from './panel-view.js';
-import { PANEL_STYLES, THEME_CSS } from './styles.js';
+import { PanelView } from '../panel-view.js';
+import type { PanelViewCallbacks } from '../panel-view.js';
+import { PANEL_STYLES, THEME_CSS } from '../styles.js';
+import type { BpmnElementRegistry, BpmnEventBus } from '../../studio/bpmn-modeler-extender.js';
+import type { BpmnModdle, BpmnModeling, BpmnDiagramElement } from '../../core/bpmn-types.js';
 
 // Ensure built-in renderers are registered.
-import './renderers/index.js';
+import '../renderers/index.js';
 
 /**
  * bpmn-js DI service that renders a custom-properties panel inside the studio
@@ -44,10 +46,10 @@ export class BpmnPropertiesProvider {
   private _writing = false;
 
   constructor(
-    elementRegistry: any,
-    moddle: any,
-    private readonly _modeling: any,
-    private readonly _eventBus: any,
+    elementRegistry: BpmnElementRegistry,
+    moddle: BpmnModdle,
+    private readonly _modeling: BpmnModeling,
+    private readonly _eventBus: BpmnEventBus,
   ) {
     this._mapper = new ExtensionMapper(elementRegistry, moddle, _modeling);
     this._injectStyles();
@@ -122,8 +124,8 @@ export class BpmnPropertiesProvider {
   // ── Private – events ───────────────────────────────────────────────────────
 
   private _bindEvents(): void {
-    this._eventBus.on('selection.changed', (e: any) => {
-      const el = (e?.newSelection as any[])?.[0] ?? null;
+    this._eventBus.on('selection.changed', (e) => {
+      const el: BpmnDiagramElement | undefined = e.newSelection?.[0];
 
       if (el) {
         this._currentElementId = el.id;
