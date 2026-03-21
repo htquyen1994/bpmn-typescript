@@ -43,3 +43,24 @@ declare module 'diagram-js-minimap' {
   const MinimapModule: { [name: string]: unknown };
   export default MinimapModule;
 }
+
+declare module 'diagram-js/lib/draw/BaseRenderer' {
+  export default class BaseRenderer {
+    constructor(eventBus: unknown, priority: number);
+    canRender(element: unknown): boolean;
+    drawShape(parentNode: SVGGElement, element: unknown): SVGElement;
+    drawConnection(parentNode: SVGGElement, element: unknown): SVGElement;
+    getShapePath(element: unknown): string;
+    getConnectionPath(element: unknown): string;
+  }
+}
+
+
+declare module 'bpmn-js/lib/util/ModelUtil' {
+  export function is(element: unknown, type: string): boolean;
+  export function getBusinessObject(element: unknown): {
+    $type: string;
+    get(propName: string): unknown;
+    [key: string]: unknown;
+  };
+}

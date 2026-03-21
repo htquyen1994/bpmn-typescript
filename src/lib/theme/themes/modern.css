@@ -1,0 +1,166 @@
+/**
+ * CSP BPMN — "Modern" diagram theme
+ *
+ * Scope: class `csp-theme-modern` applied to `.bpmn-canvas-container`.
+ * All selectors are intentionally scoped here so the theme can be toggled
+ * on/off without any JavaScript renderer changes.
+ *
+ * bpmn-js renders shapes using SVG *presentation attributes* (fill="…",
+ * stroke="…") which have specificity 0 in CSS, so ordinary rules override
+ * them without needing !important in most cases.  Inline-style exceptions
+ * (e.g. inside diagram-js-grid) are handled with !important where noted.
+ */
+
+/* ── Canvas background ──────────────────────────────────────────────────────── */
+
+.csp-theme-modern,
+.csp-theme-modern .djs-container {
+  background-color: #eef2ff;
+}
+
+/* ── Rectangle shapes — tasks, subprocesses, data stores, pools, lanes ─────── */
+
+.csp-theme-modern .djs-shape .djs-visual > rect {
+  fill:   #dbeafe;
+  stroke: #3b82f6;
+}
+
+/* ── Circle shapes — start / intermediate / end events ─────────────────────── */
+
+.csp-theme-modern .djs-shape .djs-visual > circle {
+  fill:   #dcfce7;
+  stroke: #16a34a;
+}
+
+/* ── Gateway shapes — exclusive, parallel, inclusive, event-based ───────────── */
+
+.csp-theme-modern .djs-shape .djs-visual > polygon {
+  fill:   #fef9c3;
+  stroke: #ca8a04;
+}
+
+/* ── Sequence flows, message flows, data associations ───────────────────────── */
+
+.csp-theme-modern .djs-connection .djs-visual > path {
+  stroke: #6366f1;
+  fill:   none;
+}
+
+/* ── Collapsed-subprocess "+" marker and other path-based shape markers ─────── */
+/* Keep inside-shape path fills neutral (inherits from shape, not overridden).  */
+
+/* ── Shape labels ────────────────────────────────────────────────────────────── */
+
+.csp-theme-modern .djs-shape text {
+  fill: #1e293b;
+}
+
+/* ── Connection labels (e.g. sequence-flow name) ────────────────────────────── */
+
+.csp-theme-modern .djs-connection text {
+  fill: #4338ca;
+}
+
+/* ── Hover brightness on shapes ─────────────────────────────────────────────── */
+
+.csp-theme-modern .djs-shape:hover .djs-visual > rect,
+.csp-theme-modern .djs-shape:hover .djs-visual > circle,
+.csp-theme-modern .djs-shape:hover .djs-visual > polygon {
+  filter: brightness(0.93);
+}
+
+/* ── Selection outline ───────────────────────────────────────────────────────── */
+
+.csp-theme-modern .djs-element.selected > .djs-outline {
+  stroke: #3b82f6 !important;
+}
+
+/* ── Palette ─────────────────────────────────────────────────────────────────── */
+
+.csp-theme-modern .djs-palette {
+  background:    #1d4ed8 !important;
+  border-color:  #3b82f6 !important;
+  border-radius: 0 0.625rem 0.625rem 0;
+  box-shadow:    4px 0 20px rgba(0, 0, 0, 0.25) !important;
+  overflow:      hidden;
+}
+
+.csp-theme-modern .djs-palette .entry {
+  color: #bfdbfe !important;
+}
+
+.csp-theme-modern .djs-palette .entry:hover {
+  background: rgba(255, 255, 255, 0.15) !important;
+  color:      #ffffff !important;
+}
+
+.csp-theme-modern .djs-palette .entry.highlighted,
+.csp-theme-modern .djs-palette .entry.active {
+  background: rgba(255, 255, 255, 0.25) !important;
+  color:      #ffffff !important;
+}
+
+.csp-theme-modern .djs-palette .separator {
+  border-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+.csp-theme-modern .djs-palette-toggle {
+  color:      #93c5fd !important;
+  background: rgba(0, 0, 0, 0.2) !important;
+}
+
+.csp-theme-modern .djs-palette-toggle:hover {
+  color:      #ffffff !important;
+  background: rgba(0, 0, 0, 0.35) !important;
+}
+
+/* ── Context pad ─────────────────────────────────────────────────────────────── */
+
+.csp-theme-modern .djs-context-pad .entry {
+  background:    #ffffff !important;
+  border-color:  #93c5fd !important;
+  border-radius: 0.375rem !important;
+  color:         #1d4ed8 !important;
+}
+
+.csp-theme-modern .djs-context-pad .entry:hover {
+  background:   #eff6ff !important;
+  border-color: #3b82f6 !important;
+  color:        #1e40af !important;
+}
+
+/* ── Popup menu ──────────────────────────────────────────────────────────────── */
+
+.csp-theme-modern .djs-popup {
+  border-color:  #93c5fd !important;
+  border-radius: 0.5rem !important;
+  overflow:      hidden !important;
+  box-shadow:    0 4px 20px rgba(0, 0, 0, 0.18) !important;
+}
+
+.csp-theme-modern .djs-popup-header {
+  background: #1d4ed8 !important;
+  color:      #ffffff !important;
+}
+
+.csp-theme-modern .djs-popup-header .entry {
+  color: #bfdbfe !important;
+}
+
+.csp-theme-modern .djs-popup-header .entry:hover {
+  background: rgba(255, 255, 255, 0.2) !important;
+  color:      #ffffff !important;
+}
+
+.csp-theme-modern .djs-popup-body .entry {
+  color: #1e293b !important;
+}
+
+.csp-theme-modern .djs-popup-body .entry:hover {
+  background: #eff6ff !important;
+  color:      #1d4ed8 !important;
+}
+
+.csp-theme-modern .djs-popup-body .entry.disabled {
+  color: #94a3b8 !important;
+}

@@ -18,7 +18,9 @@ import { StudioLayout } from './studio-layout.js';
 import { CanvasControls } from './canvas-controls/canvas-controls.js';
 import { BPMN_CORE_CSS, BPMN_PROPERTIES_CSS, STUDIO_LAYOUT_CSS } from './studio-styles.js';
 import { MinimapModule, MINIMAP_CSS } from '../plugins/minimap/index.js';
+import { CustomRendererModule, RENDERER_CSS } from '../plugins/custom-renderer/index.js';
 import { THEME_CSS } from '../theme/index.js';
+import { DiagramThemeManager } from '../theme/diagram-themes.js';
 import type { LayoutElements } from './studio-layout.js';
 import type { DiagramTabState, AddTabConfig as TabAddConfig } from '../tabs/types.js';
 import type { CustomPropertyConfig } from '../custom-properties/types.js';
@@ -66,6 +68,7 @@ export class CspBpmnStudioElement extends BaseComponent {
 
   private readonly _studioLayout = new StudioLayout();
   private _canvasControls: CanvasControls | null = null;
+  private readonly _themeManager = new DiagramThemeManager();
 
   // ── Multi-tab state ───────────────────────────────────────────────────────
   private readonly _tabManager = new TabManager({ defaultTitle: 'Diagram' });
@@ -114,6 +117,7 @@ export class CspBpmnStudioElement extends BaseComponent {
       this._studioLayout.applyMode(mode, this._layout);
       this._createInstance();
       this._canvasControls?.setMinimapSupported(mode === 'modeler');
+      this._canvasControls?.setThemeSupported(mode === 'modeler');
     }
   }
 
@@ -237,11 +241,12 @@ export class CspBpmnStudioElement extends BaseComponent {
   // ---------------------------------------------------------------------------
 
   private _injectStyles(): void {
-    this.addStyles('csp-theme',           THEME_CSS);
-    this.addStyles('bpmn-core',           BPMN_CORE_CSS);
+    this.addStyles('csp-theme',             THEME_CSS);
+    this.addStyles('bpmn-core',             BPMN_CORE_CSS);
     this.addStyles('bpmn-properties-panel', BPMN_PROPERTIES_CSS);
-    this.addStyles('bpmn-studio-layout',  STUDIO_LAYOUT_CSS);
-    this.addStyles('bpmn-minimap',        MINIMAP_CSS);
+    this.addStyles('bpmn-studio-layout',    STUDIO_LAYOUT_CSS);
+    this.addStyles('bpmn-minimap',          MINIMAP_CSS);
+    this.addStyles('bpmn-custom-renderer',  RENDERER_CSS);
   }
 
   // ---------------------------------------------------------------------------
@@ -274,8 +279,10 @@ export class CspBpmnStudioElement extends BaseComponent {
         minimap.toggle();
         return minimap.isOpen() as boolean;
       },
+      onToggleTheme: () => this._themeManager.toggle(),
     });
     this._canvasControls.mount(this._layout.canvasControlsContainer);
+    this._themeManager.mount(this._layout.canvasContainer);
 
     this._studioLayout.applyMode(this.mode, this._layout);
   }
@@ -289,7 +296,10 @@ export class CspBpmnStudioElement extends BaseComponent {
 
     if (this.mode === 'viewer') {
       this.modeler = new BpmnModelerExtender(
-        new NavigatedViewer({ container: this._layout.canvasContainer }),
+        new NavigatedViewer({
+          container:         this._layout.canvasContainer,
+          additionalModules: [CustomRendererModule],
+        }),
       );
       return;
     }
@@ -302,6 +312,7 @@ export class CspBpmnStudioElement extends BaseComponent {
       TaskTypePaletteModule,
       CustomPropertiesModule,
       MinimapModule,
+      CustomRendererModule,
     ];
 
     const moddleExtensions: Record<string, object> = {

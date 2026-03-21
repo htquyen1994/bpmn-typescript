@@ -1,0 +1,55 @@
+/**
+ * CSP BPMN — Custom Renderer Styles
+ *
+ * Always-on companion to CustomBpmnRenderer + PaletteIconPatch.
+ *
+ * Drop-shadow classes (csp-r-*) are added by CustomBpmnRenderer to .djs-visual.
+ * Palette icon replacement is handled by PaletteIconPatch (TypeScript) which
+ * appends .csp-palette-icon spans; this CSS hides the original bpmn-font glyph.
+ */
+
+/* ── Drop shadows via CSS filter ─────────────────────────────────────────── */
+
+.djs-visual.csp-r-activity {
+  filter: drop-shadow(2px 4px 6px rgba(0, 0, 0, 0.18));
+}
+
+.djs-visual.csp-r-event {
+  filter: drop-shadow(1px 2px 4px rgba(0, 0, 0, 0.16));
+}
+
+.djs-visual.csp-r-gateway {
+  filter: drop-shadow(2px 3px 5px rgba(0, 0, 0, 0.14));
+}
+
+/* ── Palette — uniform icon colour ───────────────────────────────────────── */
+
+.djs-palette .entry {
+  color: #475569; /* slate-600 — professional, readable */
+}
+
+.djs-palette .entry:hover {
+  color: #1e293b; /* slate-800 on hover */
+}
+
+/* ── Palette — hide bpmn-font ::before on patched entries ────────────────── */
+/* PaletteIconPatch sets data-csp-icon when it injects a custom SVG icon. */
+
+.djs-palette .entry[data-csp-icon]::before {
+  content: none !important;
+}
+
+/* ── Palette — custom icon sizing and alignment ──────────────────────────── */
+
+.djs-palette .entry .csp-palette-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.djs-palette .entry .csp-palette-icon svg {
+  width: 20px;
+  height: 20px;
+}
