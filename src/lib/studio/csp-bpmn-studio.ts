@@ -15,6 +15,7 @@ import { CustomPropertiesModule } from '../custom-properties/bpmn/bpmn-provider.
 import { TabManager } from '../tabs/tab-manager.js';
 import { TabBarUI } from '../tabs/tab-bar/index.js';
 import { LoadingOverlay } from '../loading/index.js';
+import { TabDiagramSource } from './tab-diagram-source.js';
 import { StudioLayout } from './studio-layout.js';
 import { CanvasControls } from './canvas-controls/canvas-controls.js';
 import { BPMN_CORE_CSS, BPMN_PROPERTIES_CSS, STUDIO_LAYOUT_CSS } from './studio-styles.js';
@@ -24,6 +25,7 @@ import { THEME_CSS } from '../theme/index.js';
 import { DiagramThemeManager } from '../theme/diagram-themes.js';
 import type { LayoutElements } from './studio-layout.js';
 import type { TabMeta, AddTabConfig as TabAddConfig } from '../tabs/types.js';
+import type { SubprocessItem } from '../plugins/reusable-subprocess/subprocess-store.js';
 import type { CustomPropertyConfig } from '../custom-properties/types.js';
 import type { BpmStudioMode, BpmnProvider, BpmnEventType, BpmnEventCallback, BpmnElement } from '../types.js';
 
@@ -350,10 +352,13 @@ export class CspBpmnStudioElement extends BaseComponent {
 
     this.modeler = new BpmnModelerExtender(
       new Modeler({
-        container:        this._layout.canvasContainer,
-        propertiesPanel:  { parent: this._layout.propertiesPanelContainer },
+        container:          this._layout.canvasContainer,
+        propertiesPanel:    { parent: this._layout.propertiesPanelContainer },
         additionalModules,
         moddleExtensions,
+        // SubprocessSource extensions — injected into the popup provider via
+        // bpmn-js config injection (config.subprocessSources).
+        subprocessSources: [new TabDiagramSource(this._tabManager)],
       }),
     );
 
@@ -568,13 +573,22 @@ export class CspBpmnStudioElement extends BaseComponent {
     reader.readAsText(file);
   }
 
-  private async _handleSubprocessCreate(item: unknown): Promise<void> {
+  private async _handleSubprocessCreate(item: SubprocessItem): Promise<void> {
     if (!this.modeler || !item) return;
+    this._loadingOverlay.show('Placing SubProcess…');
     try {
+      // Tab-sourced items carry a resolveXml callback instead of inline XML.
+      // Await the lazy load before passing to the creator.
+      const resolvedItem: SubprocessItem = item.resolveXml
+        ? { ...item, xml: await item.resolveXml() }
+        : item;
+
       const creator = new SubprocessCreator(this.modeler);
-      await creator.createFromItem(item as any);
+      await creator.createFromItem(resolvedItem as any);
     } catch (err) {
       console.error('[csp-bpmn] Failed to create reusable SubProcess:', err);
+    } finally {
+      this._loadingOverlay.hide();
     }
   }
 }

@@ -4,7 +4,8 @@ import { SubprocessPopupProvider } from './subprocess-popup-provider.js';
 
 export { SubprocessStore, SubprocessPaletteProvider, SubprocessPopupProvider };
 export { SubprocessCreator } from './subprocess-creator.js';
-export type { SubprocessItem } from './subprocess-store.js';
+export type { SubprocessItem }   from './subprocess-store.js';
+export type { SubprocessSource } from './subprocess-source.js';
 
 /**
  * bpmn-js additional module that enables reusable SubProcesses:

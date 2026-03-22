@@ -5,9 +5,15 @@ export interface SubprocessItem {
   storeId: string;
   /** Human-readable label shown in the popup menu. */
   name: string;
-  /** Raw BPMN 2.0 XML string. */
+  /** Raw BPMN 2.0 XML string. Empty when `resolveXml` is provided. */
   xml: string;
   createdAt: number;
+  /**
+   * Optional async XML resolver for lazy-loaded sources (e.g. open diagram tabs).
+   * When present, `xml` may be an empty string — the actual XML is fetched only
+   * when the item is placed onto the canvas.
+   */
+  resolveXml?: () => Promise<string>;
 }
 
 /**
