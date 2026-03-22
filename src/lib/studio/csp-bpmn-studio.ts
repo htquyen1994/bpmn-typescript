@@ -80,6 +80,8 @@ export class CspBpmnStudioElement extends BaseComponent {
   private _clipboardXml: string | null = null;
   /** True while an async tab switch is in progress — prevents re-entrant switches. */
   private _switching = false;
+  /** Guards against an echo loop when we programmatically rename the BPMN process. */
+  private _syncingDiagramName = false;
   /** Resolves when the initial tabs are loaded after createInstance(). */
   private _tabsReady: Promise<void> = Promise.resolve();
 
@@ -282,7 +284,14 @@ export class CspBpmnStudioElement extends BaseComponent {
       onActivate: (id) => { void this._switchToTab(id); },
       onClose:    (id) => { void this._onTabClose(id); },
       onAdd:      ()   => { void this._addAndActivateTab(); },
-      onRename:   (id, title) => { this._tabManager.patch(id, { title }); },
+      onRename: (id, title) => {
+        this._tabManager.patch(id, { title });
+        // Sync the new name into the BPMN process element (active tab only —
+        // inactive tabs are not loaded in the modeler).
+        if (id === this._tabManager.getActiveId()) {
+          this._syncDiagramName(title);
+        }
+      },
     });
     this._tabBarUI.mount(this._layout.tabBarContainer);
 
@@ -500,19 +509,60 @@ export class CspBpmnStudioElement extends BaseComponent {
     }
   }
 
+  /**
+   * Push a new name into the active diagram's root process element.
+   * Uses a guard flag to prevent the subsequent `element.changed` event
+   * from echoing the change back and triggering a redundant tab title update.
+   */
+  private _syncDiagramName(name: string): void {
+    if (!this.modeler || this._syncingDiagramName) return;
+    this._syncingDiagramName = true;
+    try {
+      const root = this.modeler.canvas.getRootElement();
+      // modeling is only available in modeler mode (not NavigatedViewer)
+      this.modeler.modeling.updateProperties(root as any, { name });
+    } catch { /* viewer mode — no modeling service; silent fail */ }
+    finally {
+      this._syncingDiagramName = false;
+    }
+  }
+
   private _wireTabDirtyTracking(): void {
     if (!this.modeler) return;
 
-    const onChanged = (): void => {
+    const onCommandChanged = (): void => {
       if (this._switching) return;
       const activeId = this._tabManager.getActiveId();
       if (activeId) this._tabManager.markDirty(activeId);
     };
 
-    this.modeler.eventBus.on('commandStack.changed', onChanged);
-    this.eventCleanups.push(() => {
-      try { this.modeler?.eventBus.off('commandStack.changed', onChanged); } catch { /* ignore */ }
-    });
+    // When the user renames the root process element (e.g. via the properties
+    // panel or direct label edit), mirror the change back into the tab title.
+    const onElementChanged = (e: Record<string, unknown>): void => {
+      if (this._switching || this._syncingDiagramName) return;
+      try {
+        const element = e['element'] as any;
+        if (!element) return;
+        // Only care about the root process element
+        if (element.id !== this.modeler!.canvas.getRootElement().id) return;
+        const newName = element.businessObject?.name as string | undefined;
+        const activeId = this._tabManager.getActiveId();
+        if (!activeId || !newName) return;
+        const current = this._tabManager.get(activeId);
+        // Guard: skip if title already matches (prevents redundant re-renders)
+        if (current && current.title !== newName) {
+          this._tabManager.patch(activeId, { title: newName });
+        }
+      } catch { /* ignore — e.g. missing businessObject in viewer mode */ }
+    };
+
+    this.modeler.eventBus.on('commandStack.changed', onCommandChanged);
+    this.modeler.eventBus.on('element.changed',      onElementChanged);
+
+    this.eventCleanups.push(
+      () => { try { this.modeler?.eventBus.off('commandStack.changed', onCommandChanged); } catch { /* ignore */ } },
+      () => { try { this.modeler?.eventBus.off('element.changed',      onElementChanged); } catch { /* ignore */ } },
+    );
   }
 
   // ---------------------------------------------------------------------------

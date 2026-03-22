@@ -66,13 +66,16 @@
 }
 
 /* ── Dirty dot ────────────────────────────────────────────────────────────── */
+/* Always present in the DOM (from template); visibility driven by modifier class. */
 .csp-tab-dirty {
+  display: none;
   width: var(--csp-sz-dirty-dot);
   height: var(--csp-sz-dirty-dot);
   border-radius: var(--csp-radius-full);
   background: var(--csp-color-warning);
   flex-shrink: 0;
 }
+.csp-tab--dirty .csp-tab-dirty { display: block; }
 
 /* ── Close button ─────────────────────────────────────────────────────────── */
 .csp-tab-close {
