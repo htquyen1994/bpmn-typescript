@@ -14,6 +14,7 @@ import { TaskTypePaletteModule } from '../plugins/task-type-palette/index.js';
 import { CustomPropertiesModule } from '../custom-properties/bpmn/bpmn-provider.js';
 import { TabManager } from '../tabs/tab-manager.js';
 import { TabBarUI } from '../tabs/tab-bar/index.js';
+import { LoadingOverlay } from '../loading/index.js';
 import { StudioLayout } from './studio-layout.js';
 import { CanvasControls } from './canvas-controls/canvas-controls.js';
 import { BPMN_CORE_CSS, BPMN_PROPERTIES_CSS, STUDIO_LAYOUT_CSS } from './studio-styles.js';
@@ -22,7 +23,7 @@ import { CustomRendererModule, RENDERER_CSS } from '../plugins/custom-renderer/i
 import { THEME_CSS } from '../theme/index.js';
 import { DiagramThemeManager } from '../theme/diagram-themes.js';
 import type { LayoutElements } from './studio-layout.js';
-import type { DiagramTabState, AddTabConfig as TabAddConfig } from '../tabs/types.js';
+import type { TabMeta, AddTabConfig as TabAddConfig } from '../tabs/types.js';
 import type { CustomPropertyConfig } from '../custom-properties/types.js';
 import type { BpmStudioMode, BpmnProvider, BpmnEventType, BpmnEventCallback, BpmnElement } from '../types.js';
 
@@ -71,7 +72,8 @@ export class CspBpmnStudioElement extends BaseComponent {
   private readonly _themeManager = new DiagramThemeManager();
 
   // ── Multi-tab state ───────────────────────────────────────────────────────
-  private readonly _tabManager = new TabManager({ defaultTitle: 'Diagram' });
+  private readonly _tabManager    = new TabManager({ defaultTitle: 'Diagram' });
+  private readonly _loadingOverlay = new LoadingOverlay();
   private _tabBarUI: TabBarUI | null = null;
   private _clipboardXml: string | null = null;
   /** True while an async tab switch is in progress — prevents re-entrant switches. */
@@ -93,6 +95,7 @@ export class CspBpmnStudioElement extends BaseComponent {
     this._canvasControls!.destroy();
     this._tabBarUI?.destroy();
     this._tabBarUI = null;
+    this._loadingOverlay.destroy();
     this._destroyInstance();
   }
 
@@ -129,7 +132,7 @@ export class CspBpmnStudioElement extends BaseComponent {
     this.modeler.canvas.zoom('fit-viewport');
     const activeId = this._tabManager.getActiveId();
     if (activeId) {
-      this._tabManager.snapshot(activeId, xml, null);
+      await this._tabManager.snapshot(activeId, xml, null);
       this._tabManager.markClean(activeId);
     }
   }
@@ -139,7 +142,7 @@ export class CspBpmnStudioElement extends BaseComponent {
     const { xml } = await this.modeler.saveXML({ format: true });
     const activeId = this._tabManager.getActiveId();
     if (activeId && xml) {
-      this._tabManager.snapshot(activeId, xml, this.modeler.getViewbox());
+      await this._tabManager.snapshot(activeId, xml, this.modeler.getViewbox());
       this._tabManager.markClean(activeId);
     }
     return xml;
@@ -204,7 +207,7 @@ export class CspBpmnStudioElement extends BaseComponent {
   // Multi-tab Public API
   // ---------------------------------------------------------------------------
 
-  async addTab(config?: TabAddConfig): Promise<DiagramTabState> {
+  async addTab(config?: TabAddConfig): Promise<TabMeta> {
     return this._addAndActivateTab(config);
   }
 
@@ -220,7 +223,7 @@ export class CspBpmnStudioElement extends BaseComponent {
     return this._tabManager.getActiveId();
   }
 
-  getAllTabs(): DiagramTabState[] {
+  getAllTabs(): TabMeta[] {
     return this._tabManager.getAll();
   }
 
@@ -231,9 +234,23 @@ export class CspBpmnStudioElement extends BaseComponent {
     return this._clipboardXml;
   }
 
-  async pasteFromClipboard(): Promise<DiagramTabState | null> {
+  async pasteFromClipboard(): Promise<TabMeta | null> {
     if (!this._clipboardXml) return null;
     return this._addAndActivateTab({ xml: this._clipboardXml });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Loading Overlay — usable by any feature
+  // ---------------------------------------------------------------------------
+
+  /** Show the global loading overlay with an optional message. */
+  showLoading(message = ''): void {
+    this._loadingOverlay.show(message);
+  }
+
+  /** Hide the global loading overlay (reference-counted). */
+  hideLoading(): void {
+    this._loadingOverlay.hide();
   }
 
   // ---------------------------------------------------------------------------
@@ -266,6 +283,11 @@ export class CspBpmnStudioElement extends BaseComponent {
       onRename:   (id, title) => { this._tabManager.patch(id, { title }); },
     });
     this._tabBarUI.mount(this._layout.tabBarContainer);
+
+    // Mount the loading overlay on the canvas so it covers the diagram area
+    // during tab switches or other async operations.
+    // The canvas container must be position:relative (bpmn-js guarantees this).
+    this._loadingOverlay.mount(this._layout.canvasContainer);
 
     this._canvasControls = new CanvasControls({
       onZoomIn:         () => this.zoomIn(),
@@ -349,7 +371,7 @@ export class CspBpmnStudioElement extends BaseComponent {
       if (activeId) {
         void this.modeler.saveXML({ format: true }).then(({ xml }) => {
           if (activeId && xml) {
-            this._tabManager.snapshot(activeId, xml, this.modeler?.getViewbox() ?? null);
+            void this._tabManager.snapshot(activeId, xml, this.modeler?.getViewbox() ?? null);
           }
         }).catch(() => { /* ignore */ });
       }
@@ -375,7 +397,7 @@ export class CspBpmnStudioElement extends BaseComponent {
         this._tabManager.setLifecycle(tab.id, 'loading');
         await this.modeler.importXML(EMPTY_DIAGRAM_XML);
         this.modeler.canvas.zoom('fit-viewport');
-        this._tabManager.snapshot(tab.id, EMPTY_DIAGRAM_XML, null);
+        await this._tabManager.snapshot(tab.id, EMPTY_DIAGRAM_XML, null);
         this._tabManager.setLifecycle(tab.id, 'ready');
       } catch (err) {
         console.error('[csp-bpmn] Failed to load initial diagram:', err);
@@ -387,12 +409,16 @@ export class CspBpmnStudioElement extends BaseComponent {
     }
   }
 
-  private async _loadTabXML(tab: DiagramTabState): Promise<void> {
+  /**
+   * Load a tab's XML from the store and import it into the modeler.
+   * Uses `TabManager.loadXml()` so it works with any store backend.
+   */
+  private async _loadTabXML(tab: TabMeta): Promise<void> {
     if (!this.modeler) return;
 
     this._tabManager.setLifecycle(tab.id, 'loading');
     try {
-      const xml = tab.xml || EMPTY_DIAGRAM_XML;
+      const xml = (await this._tabManager.loadXml(tab.id)) || EMPTY_DIAGRAM_XML;
       await this.modeler.importXML(xml);
 
       if (tab.viewbox) {
@@ -413,12 +439,14 @@ export class CspBpmnStudioElement extends BaseComponent {
     if (this._switching || !this.modeler) return false;
 
     this._switching = true;
+    this._loadingOverlay.show();
     try {
+      // Snapshot the current tab before leaving it
       const currentId = this._tabManager.getActiveId();
       if (currentId) {
         try {
           const { xml } = await this.modeler.saveXML({ format: true });
-          this._tabManager.snapshot(currentId, xml ?? '', this.modeler.getViewbox());
+          await this._tabManager.snapshot(currentId, xml ?? '', this.modeler.getViewbox());
         } catch { /* ignore */ }
       }
 
@@ -431,10 +459,11 @@ export class CspBpmnStudioElement extends BaseComponent {
       return true;
     } finally {
       this._switching = false;
+      this._loadingOverlay.hide();
     }
   }
 
-  private async _addAndActivateTab(config?: TabAddConfig): Promise<DiagramTabState> {
+  private async _addAndActivateTab(config?: TabAddConfig): Promise<TabMeta> {
     const tab = this._tabManager.add(config);
     await this._switchToTab(tab.id);
     return tab;
@@ -449,7 +478,7 @@ export class CspBpmnStudioElement extends BaseComponent {
     if (wasActive && this.modeler) {
       try {
         const { xml } = await this.modeler.saveXML({ format: true });
-        this._tabManager.snapshot(id, xml ?? '', this.modeler.getViewbox());
+        await this._tabManager.snapshot(id, xml ?? '', this.modeler.getViewbox());
       } catch { /* ignore */ }
     }
 

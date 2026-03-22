@@ -1,6 +1,6 @@
 import type { CSPBpmConfig, BpmStudioMode, BpmnEventType, BpmnEventCallback } from '../types.js';
 import type { StudioComponent } from '../studio/csp-bpmn-studio.js';
-import type { DiagramTabState, AddTabConfig as TabAddConfig } from '../tabs/types.js';
+import type { TabMeta, AddTabConfig as TabAddConfig } from '../tabs/types.js';
 
 // Phase 1 output — the entire studio compiled to an IIFE string, inlined at build time.
 // @ts-ignore – ?raw is a Vite build-time suffix; the file is produced by Phase 1.
@@ -198,7 +198,7 @@ export class CSPBpm {
    * @example
    * const tab = await bpm.addTab({ title: 'Order Process', xml: orderXml });
    */
-  async addTab(config?: TabAddConfig): Promise<DiagramTabState> {
+  async addTab(config?: TabAddConfig): Promise<TabMeta> {
     return this.studioEl.addTab(config);
   }
 
@@ -224,8 +224,8 @@ export class CSPBpm {
     return this.studioEl.getActiveTabId();
   }
 
-  /** Returns all open tabs in display order. */
-  getAllTabs(): DiagramTabState[] {
+  /** Returns all open tabs in display order (lightweight metadata, no XML). */
+  getAllTabs(): TabMeta[] {
     return this.studioEl.getAllTabs();
   }
 
@@ -241,7 +241,7 @@ export class CSPBpm {
    * Open a new tab populated with the last copied XML (from `copyActiveTabToClipboard()`).
    * Returns the new tab, or null if the clipboard is empty.
    */
-  async pasteFromClipboard(): Promise<DiagramTabState | null> {
+  async pasteFromClipboard(): Promise<TabMeta | null> {
     return this.studioEl.pasteFromClipboard();
   }
 

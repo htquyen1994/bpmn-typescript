@@ -3,7 +3,7 @@ import tabBarCss from './tab-bar.css?inline';
 
 import { UIComponent } from '../../core/ui-component.js';
 import type { TabManager } from '../tab-manager.js';
-import type { DiagramTabState } from '../types.js';
+import type { TabMeta } from '../types.js';
 
 /** Callbacks the tab bar delegates user gestures to. */
 export interface TabBarCallbacks {
@@ -86,7 +86,7 @@ export class TabBarUI extends UIComponent {
     }
   }
 
-  private _createTabEl(tab: DiagramTabState, isActive: boolean): HTMLElement {
+  private _createTabEl(tab: TabMeta, isActive: boolean): HTMLElement {
     const el = document.createElement('div');
     el.className = 'csp-tab' + (isActive ? ' csp-tab--active' : '');
     el.dataset.tabId = tab.id;
@@ -127,7 +127,7 @@ export class TabBarUI extends UIComponent {
   private _startInlineRename(
     tabEl: HTMLElement,
     labelEl: HTMLSpanElement,
-    tab: DiagramTabState,
+    tab: TabMeta,
   ): void {
     const doc = tabEl.ownerDocument;
     const input = doc.createElement('input');

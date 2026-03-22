@@ -21,8 +21,11 @@ export type TabLifecycle =
   | 'ready'     // diagram fully loaded and interactive
   | 'error';    // last import failed
 
-/** Immutable identity of a tab plus its mutable runtime state. */
-export interface DiagramTabState {
+/**
+ * Lightweight tab metadata — always kept in memory for instant UI rendering.
+ * Does NOT include XML content (fetched lazily via `TabManager.loadXml()`).
+ */
+export interface TabMeta {
   /** Unique tab identifier — assigned at creation, never changes. */
   readonly id:        string;
   /** Unique numeric index used for default title generation. */
@@ -33,8 +36,6 @@ export interface DiagramTabState {
   isDirty:            boolean;
   /** Current lifecycle phase. */
   lifecycle:          TabLifecycle;
-  /** Full BPMN 2.0 XML — includes extensionElements for custom properties. */
-  xml:                string;
   /** Last known viewport — null until the tab is first activated. */
   viewbox:            ViewboxSnapshot | null;
   /** Unix timestamp (ms) when this tab was created. */
@@ -43,13 +44,27 @@ export interface DiagramTabState {
   metadata:           Record<string, unknown>;
 }
 
+/**
+ * Full tab state including XML content.
+ * Returned by `TabManager.loadTab()` when the diagram XML has been explicitly fetched.
+ *
+ * @see TabManager.loadTab
+ */
+export interface DiagramTabState extends TabMeta {
+  /** Full BPMN 2.0 XML — includes extensionElements for custom properties. */
+  xml: string;
+}
+
+/** Fields that may be patched on an existing tab (id, index, createdAt are immutable). */
+export type TabPatch = Partial<Omit<TabMeta, 'id' | 'index' | 'createdAt'>>;
+
 // ── Configuration ─────────────────────────────────────────────────────────────
 
 /** Options for creating a new tab. */
 export interface AddTabConfig {
   /** Display name. Defaults to "<defaultTitle> N". */
   title?:    string;
-  /** Initial BPMN XML. Defaults to an empty diagram. */
+  /** Initial BPMN XML. Saved to the store backend immediately on creation. */
   xml?:      string;
   /** Initial viewport. Defaults to null (fit-viewport on first load). */
   viewbox?:  ViewboxSnapshot;
@@ -72,15 +87,14 @@ export interface TabManagerConfig {
  * Return `false` (or `Promise<false>`) to cancel the activation.
  *
  * @example
- * // Prevent switching away from a dirty tab without confirmation
  * tabManager.setBeforeActivate(async (current, _next) => {
  *   if (!current?.isDirty) return true;
  *   return confirm(`"${current.title}" has unsaved changes. Switch anyway?`);
  * });
  */
 export type BeforeActivateHook = (
-  current: DiagramTabState | null,
-  next:    DiagramTabState,
+  current: TabMeta | null,
+  next:    TabMeta,
 ) => boolean | Promise<boolean>;
 
 // ── Events ────────────────────────────────────────────────────────────────────
@@ -91,22 +105,22 @@ export type BeforeActivateHook = (
  */
 export interface TabEventMap {
   /** A new tab was added to the store. */
-  'tab.added':      { readonly tab: DiagramTabState };
+  'tab.added':      { readonly tab: TabMeta };
   /**
    * A tab was removed from the store.
    * `adjacent` is the tab that should be activated next, or null if no tabs remain.
    */
-  'tab.removed':    { readonly tab: DiagramTabState; readonly adjacent: DiagramTabState | null };
+  'tab.removed':    { readonly tab: TabMeta; readonly adjacent: TabMeta | null };
   /** A tab switch completed successfully. */
-  'tab.activated':  { readonly prev: DiagramTabState | null; readonly next: DiagramTabState };
+  'tab.activated':  { readonly prev: TabMeta | null; readonly next: TabMeta };
   /** A tab's mutable fields were patched (title, isDirty, lifecycle, …). */
-  'tab.updated':    { readonly tab: DiagramTabState };
+  'tab.updated':    { readonly tab: TabMeta };
   /** A tab's `isDirty` flag changed from false → true. */
-  'tab.dirtied':    { readonly tab: DiagramTabState };
+  'tab.dirtied':    { readonly tab: TabMeta };
   /** A tab's `isDirty` flag changed from true → false (after snapshot / save). */
-  'tab.cleaned':    { readonly tab: DiagramTabState };
+  'tab.cleaned':    { readonly tab: TabMeta };
   /** A tab's lifecycle changed (idle → loading → ready / error). */
-  'tab.lifecycle':  { readonly tab: DiagramTabState; readonly prev: TabLifecycle };
+  'tab.lifecycle':  { readonly tab: TabMeta; readonly prev: TabLifecycle };
 }
 
 /** Union of all valid event names. */

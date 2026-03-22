@@ -1,0 +1,52 @@
+/* ── LoadingOverlay ───────────────────────────────────────────────────────── */
+
+.csp-loading-overlay {
+  position:        absolute;
+  inset:           0;
+  z-index:         9999;
+  display:         flex;
+  flex-direction:  column;
+  align-items:     center;
+  justify-content: center;
+  gap:             12px;
+
+  background:      var(--csp-loading-bg, rgba(0, 0, 0, 0.30));
+  backdrop-filter: blur(2px);
+
+  /* Hidden by default — toggled via --visible modifier */
+  opacity:         0;
+  pointer-events:  none;
+  transition:      opacity 180ms ease;
+}
+
+.csp-loading-overlay--visible {
+  opacity:        1;
+  pointer-events: all;
+}
+
+/* ── Spinner ── */
+
+.csp-loading-spinner {
+  width:            40px;
+  height:           40px;
+  border:           3px solid var(--csp-loading-track, rgba(255, 255, 255, 0.20));
+  border-top-color: var(--csp-loading-color, #ffffff);
+  border-radius:    50%;
+  animation:        csp-spin 0.65s linear infinite;
+}
+
+@keyframes csp-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Message ── */
+
+.csp-loading-message {
+  color:       var(--csp-loading-text, rgba(255, 255, 255, 0.90));
+  font-size:   var(--csp-loading-font-size, 13px);
+  font-family: var(--csp-font-family, system-ui, -apple-system, sans-serif);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  /* Hide element but keep layout stable when empty */
+  min-height:  1em;
+}

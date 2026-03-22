@@ -1,18 +1,33 @@
 // =============================================================================
 // TabManager — Mediator pattern
 //
-// Orchestrates all tab operations.  Owns the TabStore and the TypedEventBus.
-// Consumers (e.g. CSPBpm facade, TabBarUI) talk to this class exclusively
-// — they never touch TabStore or the bus directly.
+// Orchestrates all tab operations. Owns a pluggable AbstractTabStore and the
+// TypedEventBus.  Consumers (e.g. CSPBpm facade, TabBarUI) talk to this class
+// exclusively — they never touch the store or the bus directly.
 //
 // Responsibilities:
 //   • Create / remove / activate tabs (with optional before-activate hook)
 //   • Manage isDirty / lifecycle transitions
-//   • Snapshot state on tab switch
+//   • Snapshot state on tab switch (async — delegates XML to the store backend)
 //   • Emit typed events so all subscribers stay in sync
+//
+// Storage backend:
+//   Pass a custom AbstractTabStore as the second constructor argument.
+//   Defaults to MemoryTabStore (everything in JS memory, zero I/O).
+//
+// @example
+//   // Default — in-memory
+//   const manager = new TabManager({ defaultTitle: 'Diagram' });
+//
+//   // Persist XML across page reloads
+//   const manager = new TabManager({}, new LocalStorageTabStore('my-app'));
+//
+//   // Large diagrams — IndexedDB backend
+//   const manager = new TabManager({}, new IndexedDBTabStore('my-app'));
 // =============================================================================
 
 import type {
+  TabMeta,
   DiagramTabState,
   AddTabConfig,
   TabManagerConfig,
@@ -20,14 +35,16 @@ import type {
   BeforeActivateHook,
   ViewboxSnapshot,
   TabLifecycle,
+  TabPatch,
 } from './types.js';
-import { TypedEventBus } from './typed-event-bus.js';
-import { TabStore }      from './tab-store.js';
+import { TypedEventBus }     from './typed-event-bus.js';
+import { MemoryTabStore }    from './store/memory-tab-store.js';
+import type { AbstractTabStore } from './store/abstract-tab-store.js';
 
 // ── ID generation ─────────────────────────────────────────────────────────────
 
 let _seq = 0;
-const nextId    = (): string  => `tab-${Date.now()}-${++_seq}`;
+const nextId = (): string => `tab-${Date.now()}-${++_seq}`;
 
 // ── TabManager ────────────────────────────────────────────────────────────────
 
@@ -41,14 +58,18 @@ export class TabManager {
    */
   readonly events = new TypedEventBus<TabEventMap>();
 
-  private readonly _store:  TabStore;
+  private readonly _store:  AbstractTabStore;
   private readonly _config: Required<TabManagerConfig>;
   private _beforeActivate:  BeforeActivateHook | null = null;
   /** Monotonically increasing counter for default title numbering. */
   private _tabSeq = 0;
 
-  constructor(config: TabManagerConfig = {}) {
-    this._store  = new TabStore();
+  /**
+   * @param config  Tab manager configuration (maxTabs, defaultTitle).
+   * @param store   Storage backend. Defaults to `MemoryTabStore`.
+   */
+  constructor(config: TabManagerConfig = {}, store?: AbstractTabStore) {
+    this._store  = store ?? new MemoryTabStore();
     this._config = {
       maxTabs:      config.maxTabs      ?? Infinity,
       defaultTitle: config.defaultTitle ?? 'Diagram',
@@ -60,13 +81,17 @@ export class TabManager {
   /**
    * Create and register a new tab.
    *
-   * @returns The newly created `DiagramTabState`.
+   * If `config.xml` is provided it is saved to the store backend immediately
+   * (fire-and-forget). The tab is returned synchronously with lightweight
+   * metadata; use `loadTab(id)` to retrieve the full state including XML.
+   *
+   * @returns The newly created `TabMeta`.
    * @throws  If `maxTabs` limit is already reached.
    *
    * @example
    * const tab = manager.add({ title: 'Order Process', xml: orderXml });
    */
-  add(config: AddTabConfig = {}): DiagramTabState {
+  add(config: AddTabConfig = {}): TabMeta {
     if (this._store.count() >= this._config.maxTabs) {
       throw new Error(
         `[TabManager] Cannot add tab — limit of ${this._config.maxTabs} reached.`,
@@ -74,21 +99,26 @@ export class TabManager {
     }
 
     this._tabSeq++;
-    const tab: DiagramTabState = {
+    const meta: TabMeta = {
       id:        nextId(),
       index:     this._tabSeq,
       title:     config.title   ?? `${this._config.defaultTitle} ${this._tabSeq}`,
       isDirty:   false,
       lifecycle: 'idle',
-      xml:       config.xml     ?? '',
       viewbox:   config.viewbox ?? null,
       createdAt: Date.now(),
       metadata:  { ...config.metadata },
     };
 
-    this._store.add(tab);
-    this.events.emit('tab.added', { tab });
-    return tab;
+    this._store.add(meta);
+
+    // Persist initial XML if provided (fire-and-forget — no blocking)
+    if (config.xml) {
+      void this._store.saveXml(meta.id, config.xml);
+    }
+
+    this.events.emit('tab.added', { tab: meta });
+    return meta;
   }
 
   // ── Activation ──────────────────────────────────────────────────────────────
@@ -103,7 +133,7 @@ export class TabManager {
    *
    * @example
    * const ok = await manager.activate(tab.id);
-   * if (ok) loadDiagram(manager.getActive()!);
+   * if (ok) await loadDiagram(manager.getActive()!);
    */
   async activate(id: string): Promise<boolean> {
     const next = this._store.get(id);
@@ -129,14 +159,17 @@ export class TabManager {
    * Remove a tab from the store.
    *
    * The `tab.removed` event carries `adjacent` — the sibling that should
-   * logically be activated next (the facade handles the actual switch).
+   * logically be activated next (the studio handles the actual switch).
    *
-   * @returns The removed tab, or `undefined` if not found.
+   * @returns The removed tab metadata, or `undefined` if not found.
    */
-  remove(id: string): DiagramTabState | undefined {
+  remove(id: string): TabMeta | undefined {
     const adjacent = this._store.getAdjacentTo(id);
     const removed  = this._store.remove(id);
     if (!removed) return undefined;
+
+    // Remove persisted XML from the backend (fire-and-forget)
+    void this._store.removeXml(id);
 
     this.events.emit('tab.removed', { tab: removed, adjacent: adjacent ?? null });
     return removed;
@@ -148,10 +181,7 @@ export class TabManager {
    * Apply arbitrary changes to a tab's mutable fields.
    * Emits `tab.updated` after patching.
    */
-  patch(
-    id:      string,
-    changes: Partial<Omit<DiagramTabState, 'id' | 'index' | 'createdAt'>>,
-  ): DiagramTabState | undefined {
+  patch(id: string, changes: TabPatch): TabMeta | undefined {
     const tab = this._store.patch(id, changes);
     if (tab) this.events.emit('tab.updated', { tab });
     return tab;
@@ -159,10 +189,34 @@ export class TabManager {
 
   /**
    * Persist the latest XML + viewport for a tab (called before switching away).
-   * Does NOT emit an event — this is a silent bookkeeping operation.
+   * Now async — awaits the store backend to confirm the write.
    */
-  snapshot(id: string, xml: string, viewbox: ViewboxSnapshot | null): void {
-    this._store.snapshot(id, xml, viewbox);
+  async snapshot(id: string, xml: string, viewbox: ViewboxSnapshot | null): Promise<void> {
+    this._store.patch(id, { viewbox });
+    await this._store.saveXml(id, xml);
+  }
+
+  /**
+   * Load the full diagram state including XML for a tab.
+   * XML is fetched from the store backend (may be async for non-memory backends).
+   *
+   * @example
+   * const { xml, title } = await manager.loadTab(tab.id);
+   * await modeler.importXML(xml);
+   */
+  async loadTab(id: string): Promise<DiagramTabState | undefined> {
+    const meta = this._store.get(id);
+    if (!meta) return undefined;
+    const xml = await this._store.loadXml(id);
+    return { ...meta, xml };
+  }
+
+  /**
+   * Load only the XML content for a tab.
+   * Prefer `loadTab()` when you also need metadata.
+   */
+  async loadXml(id: string): Promise<string> {
+    return this._store.loadXml(id);
   }
 
   /**
@@ -173,7 +227,7 @@ export class TabManager {
     const tab = this._store.get(id);
     if (!tab) return;
     const prev = tab.lifecycle;
-    this._store.setLifecycle(id, lifecycle);
+    this._store.patch(id, { lifecycle });
     this.events.emit('tab.lifecycle', { tab: this._store.get(id)!, prev });
   }
 
@@ -203,8 +257,7 @@ export class TabManager {
 
   /**
    * Move a tab to a new position in the display order.
-   * The tab bar UI is responsible for re-rendering; no event is emitted
-   * (the view can call `getAll()` and reconcile itself).
+   * The tab bar UI is responsible for re-rendering; no event is emitted.
    */
   move(id: string, toIndex: number): boolean {
     return this._store.move(id, toIndex);
@@ -212,11 +265,13 @@ export class TabManager {
 
   // ── Queries ─────────────────────────────────────────────────────────────────
 
-  get(id: string): DiagramTabState | undefined {
+  /** Get lightweight metadata for a single tab (no XML). */
+  get(id: string): TabMeta | undefined {
     return this._store.get(id);
   }
 
-  getActive(): DiagramTabState | undefined {
+  /** Get lightweight metadata for the currently active tab (no XML). */
+  getActive(): TabMeta | undefined {
     return this._store.getActive();
   }
 
@@ -224,12 +279,12 @@ export class TabManager {
     return this._store.getActiveId();
   }
 
-  /** Returns all tabs in their current display order. */
-  getAll(): DiagramTabState[] {
+  /** Returns all tabs in their current display order (lightweight metadata only). */
+  getAll(): TabMeta[] {
     return this._store.getAll();
   }
 
-  getAdjacentTo(id: string): DiagramTabState | undefined {
+  getAdjacentTo(id: string): TabMeta | undefined {
     return this._store.getAdjacentTo(id);
   }
 
@@ -265,13 +320,14 @@ export class TabManager {
   // ── Cleanup ──────────────────────────────────────────────────────────────────
 
   /**
-   * Remove all tabs and reset the event bus.
+   * Remove all tabs, dispose the store backend, and reset the event bus.
    * Useful for testing or full reset scenarios.
    */
   dispose(): void {
     for (const tab of this._store.getAll()) {
       this._store.remove(tab.id);
     }
+    this._store.dispose();
     this.events.clear();
     this._beforeActivate = null;
   }
