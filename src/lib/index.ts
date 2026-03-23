@@ -31,6 +31,9 @@ export type {
 export { ReusableSubprocessModule } from './plugins/reusable-subprocess/index.js';
 export type { SubprocessItem }      from './plugins/reusable-subprocess/index.js';
 
+export { TabManagerModule }                      from './plugins/tab-manager/index.js';
+export { AbstractXmlBackend, MemoryXmlBackend }  from './core/xml-backend.js';
+
 export type {
   BpmnElement,
   BpmStudioMode,

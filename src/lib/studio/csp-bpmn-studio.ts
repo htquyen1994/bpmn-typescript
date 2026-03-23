@@ -10,12 +10,13 @@ import { BaseComponent } from '../core/base-component.js';
 import { BpmnModelerExtender } from './bpmn-modeler-extender.js';
 import { ActivitiPropertiesProviderModule } from '../plugins/activiti-provider.js';
 import { ReusableSubprocessModule, SubprocessCreator, SubprocessStore } from '../plugins/reusable-subprocess/index.js';
+import { TabManagerModule } from '../plugins/tab-manager/index.js';
 import { TaskTypePaletteModule } from '../plugins/task-type-palette/index.js';
 import { CustomPropertiesModule } from '../custom-properties/bpmn/bpmn-provider.js';
 import { TabManager } from '../tabs/tab-manager.js';
 import { TabBarUI } from '../tabs/tab-bar/index.js';
 import { LoadingOverlay } from '../loading/index.js';
-import { TabDiagramSource } from './tab-diagram-source.js';
+import { TabSwitchCoordinator } from './tab-switch-coordinator.js';
 import { StudioLayout } from './studio-layout.js';
 import { CanvasControls } from './canvas-controls/canvas-controls.js';
 import { BPMN_CORE_CSS, BPMN_PROPERTIES_CSS, STUDIO_LAYOUT_CSS } from './studio-styles.js';
@@ -53,14 +54,15 @@ const EMPTY_DIAGRAM_XML = `<?xml version="1.0" encoding="UTF-8"?>
 /**
  * `<csp-bpmn-studio>` – Web Component wrapping bpmn-js.
  *
- * Mode behaviour:
- *  - `modeler` (edit)  → palette, properties panel, grid, tab bar, and reusable-subprocess toolbar visible.
- *  - `viewer`          → read-only canvas only; tab bar hidden.
+ * Responsibilities (after refactoring):
+ *  - Inject CSS, build layout, mount UI widgets.
+ *  - Create / destroy the bpmn-js Modeler or NavigatedViewer instance.
+ *  - Wire file-picker and subprocess create events.
+ *  - Expose public API surface (delegates tab operations to TabSwitchCoordinator).
  *
- * Provider behaviour (modeler mode only):
- *  - `bpmn`     → standard BPMN 2.0 properties.
- *  - `camunda`  → BPMN + Camunda Platform 7 extensions.
- *  - `activiti` → BPMN + Activiti / Flowable extensions.
+ * Tab logic is split into two focused collaborators:
+ *  - TabSwitchCoordinator  — saveXML/importXML/viewbox (needs Modeler instance).
+ *  - TabManagerService     — dirty tracking, name sync, event bridge (inside DI).
  */
 export class CspBpmnStudioElement extends BaseComponent {
   private modeler:    BpmnModelerExtender | null = null;
@@ -69,21 +71,18 @@ export class CspBpmnStudioElement extends BaseComponent {
   private provider:   BpmnProvider = 'bpmn';
   private eventCleanups: Array<() => void> = [];
 
-  private readonly _studioLayout = new StudioLayout();
+  private readonly _studioLayout   = new StudioLayout();
   private _canvasControls: CanvasControls | null = null;
-  private readonly _themeManager = new DiagramThemeManager();
+  private readonly _themeManager   = new DiagramThemeManager();
 
-  // ── Multi-tab state ───────────────────────────────────────────────────────
-  private readonly _tabManager    = new TabManager({ defaultTitle: 'Diagram' });
+  // ── Tab collaborators ─────────────────────────────────────────────────────
+  private readonly _tabManager     = new TabManager({ defaultTitle: 'Diagram' });
   private readonly _loadingOverlay = new LoadingOverlay();
-  private _tabBarUI: TabBarUI | null = null;
+  private readonly _tabCoordinator = new TabSwitchCoordinator(
+    this._tabManager, this._loadingOverlay, EMPTY_DIAGRAM_XML,
+  );
+  private _tabBarUI:     TabBarUI | null = null;
   private _clipboardXml: string | null = null;
-  /** True while an async tab switch is in progress — prevents re-entrant switches. */
-  private _switching = false;
-  /** Guards against an echo loop when we programmatically rename the BPMN process. */
-  private _syncingDiagramName = false;
-  /** Resolves when the initial tabs are loaded after createInstance(). */
-  private _tabsReady: Promise<void> = Promise.resolve();
 
   // ---------------------------------------------------------------------------
   // BaseComponent lifecycle hooks
@@ -104,7 +103,7 @@ export class CspBpmnStudioElement extends BaseComponent {
   }
 
   // ---------------------------------------------------------------------------
-  // Public API (called from facade via iframe DOM)
+  // Public API
   // ---------------------------------------------------------------------------
 
   setProvider(provider: BpmnProvider): void {
@@ -129,7 +128,7 @@ export class CspBpmnStudioElement extends BaseComponent {
   }
 
   async loadXML(xml: string): Promise<void> {
-    await this._tabsReady;
+    await this._tabCoordinator.tabsReady;
     if (!this.modeler) throw new Error('Studio not initialized');
     const { warnings } = await this.modeler.importXML(xml);
     if (warnings?.length) console.warn('bpmn-js import warnings:', warnings);
@@ -183,9 +182,7 @@ export class CspBpmnStudioElement extends BaseComponent {
     return this.modeler?.getElement(elementId) ?? null;
   }
 
-  // ---------------------------------------------------------------------------
-  // Custom Properties Panel API
-  // ---------------------------------------------------------------------------
+  // ── Custom Properties Panel ──────────────────────────────────────────────
 
   registerCustomPropertyForType(bpmnType: string, configs: CustomPropertyConfig[]): void {
     this.modeler?.customPropertiesProvider?.registerForType(bpmnType, configs);
@@ -207,20 +204,18 @@ export class CspBpmnStudioElement extends BaseComponent {
     return this.modeler?.customPropertiesProvider?.validate() ?? true;
   }
 
-  // ---------------------------------------------------------------------------
-  // Multi-tab Public API
-  // ---------------------------------------------------------------------------
+  // ── Multi-tab Public API — delegated to TabSwitchCoordinator ────────────
 
   async addTab(config?: TabAddConfig): Promise<TabMeta> {
-    return this._addAndActivateTab(config);
+    return this._tabCoordinator.addAndActivateTab(config);
   }
 
   async activateTab(id: string): Promise<boolean> {
-    return this._switchToTab(id);
+    return this._tabCoordinator.switchToTab(id);
   }
 
   async closeTab(id: string): Promise<void> {
-    return this._onTabClose(id);
+    return this._tabCoordinator.onTabClose(id);
   }
 
   getActiveTabId(): string | null {
@@ -240,22 +235,13 @@ export class CspBpmnStudioElement extends BaseComponent {
 
   async pasteFromClipboard(): Promise<TabMeta | null> {
     if (!this._clipboardXml) return null;
-    return this._addAndActivateTab({ xml: this._clipboardXml });
+    return this._tabCoordinator.addAndActivateTab({ xml: this._clipboardXml });
   }
 
-  // ---------------------------------------------------------------------------
-  // Loading Overlay — usable by any feature
-  // ---------------------------------------------------------------------------
+  // ── Loading Overlay ──────────────────────────────────────────────────────
 
-  /** Show the global loading overlay with an optional message. */
-  showLoading(message = ''): void {
-    this._loadingOverlay.show(message);
-  }
-
-  /** Hide the global loading overlay (reference-counted). */
-  hideLoading(): void {
-    this._loadingOverlay.hide();
-  }
+  showLoading(message = ''): void { this._loadingOverlay.show(message); }
+  hideLoading(): void              { this._loadingOverlay.hide(); }
 
   // ---------------------------------------------------------------------------
   // Private – styles
@@ -281,23 +267,15 @@ export class CspBpmnStudioElement extends BaseComponent {
     });
 
     this._tabBarUI = new TabBarUI(this._tabManager, {
-      onActivate: (id) => { void this._switchToTab(id); },
-      onClose:    (id) => { void this._onTabClose(id); },
-      onAdd:      ()   => { void this._addAndActivateTab(); },
-      onRename: (id, title) => {
-        this._tabManager.patch(id, { title });
-        // Sync the new name into the BPMN process element (active tab only —
-        // inactive tabs are not loaded in the modeler).
-        if (id === this._tabManager.getActiveId()) {
-          this._syncDiagramName(title);
-        }
-      },
+      onActivate: (id)         => { void this._tabCoordinator.switchToTab(id); },
+      onClose:    (id)         => { void this._tabCoordinator.onTabClose(id); },
+      onAdd:      ()           => { void this._tabCoordinator.addAndActivateTab(); },
+      // Renaming patches the tab title; TabManagerService.tab.updated listener
+      // automatically syncs the new name into the active diagram element.
+      onRename:   (id, title)  => { this._tabManager.patch(id, { title }); },
     });
     this._tabBarUI.mount(this._layout.tabBarContainer);
 
-    // Mount the loading overlay on the canvas so it covers the diagram area
-    // during tab switches or other async operations.
-    // The canvas container must be position:relative (bpmn-js guarantees this).
     this._loadingOverlay.mount(this._layout.canvasContainer);
 
     this._canvasControls = new CanvasControls({
@@ -334,6 +312,7 @@ export class CspBpmnStudioElement extends BaseComponent {
           additionalModules: [CustomRendererModule],
         }),
       );
+      this._tabCoordinator.bind(this.modeler);
       return;
     }
 
@@ -341,6 +320,7 @@ export class CspBpmnStudioElement extends BaseComponent {
       BpmnPropertiesPanelModule,
       BpmnPropertiesProviderModule,
       GridModule,
+      TabManagerModule,
       ReusableSubprocessModule,
       TaskTypePaletteModule,
       CustomPropertiesModule,
@@ -361,22 +341,19 @@ export class CspBpmnStudioElement extends BaseComponent {
 
     this.modeler = new BpmnModelerExtender(
       new Modeler({
-        container:          this._layout.canvasContainer,
-        propertiesPanel:    { parent: this._layout.propertiesPanelContainer },
+        container:       this._layout.canvasContainer,
+        propertiesPanel: { parent: this._layout.propertiesPanelContainer },
         additionalModules,
         moddleExtensions,
-        // SubprocessSource extensions — injected into the popup provider via
-        // bpmn-js config injection (config.subprocessSources).
-        subprocessSources: [new TabDiagramSource(this._tabManager)],
+        // TabManagerService reads this to bridge tab events into the modeler.
+        tabManager: this._tabManager,
       }),
     );
 
     this.modeler.customPropertiesProvider?.setContainer(this._layout.customPanelContainer);
 
     this._wireSubprocessEvents();
-    this._wireTabDirtyTracking();
-
-    this._tabsReady = this._initTabsAfterCreate();
+    this._tabCoordinator.bind(this.modeler);
   }
 
   private _destroyInstance(): void {
@@ -391,178 +368,11 @@ export class CspBpmnStudioElement extends BaseComponent {
       }
     }
 
+    this._tabCoordinator.bind(null);
     for (const cleanup of this.eventCleanups) cleanup();
     this.eventCleanups = [];
     this.modeler?.destroy();
     this.modeler = null;
-  }
-
-  // ---------------------------------------------------------------------------
-  // Private – multi-tab logic
-  // ---------------------------------------------------------------------------
-
-  private async _initTabsAfterCreate(): Promise<void> {
-    if (!this.modeler) return;
-
-    if (this._tabManager.isEmpty()) {
-      const tab = this._tabManager.add();
-      await this._tabManager.activate(tab.id);
-      try {
-        this._tabManager.setLifecycle(tab.id, 'loading');
-        await this.modeler.importXML(EMPTY_DIAGRAM_XML);
-        this.modeler.canvas.zoom('fit-viewport');
-        await this._tabManager.snapshot(tab.id, EMPTY_DIAGRAM_XML, null);
-        this._tabManager.setLifecycle(tab.id, 'ready');
-      } catch (err) {
-        console.error('[csp-bpmn] Failed to load initial diagram:', err);
-        this._tabManager.setLifecycle(tab.id, 'error');
-      }
-    } else {
-      const active = this._tabManager.getActive();
-      if (active) await this._loadTabXML(active);
-    }
-  }
-
-  /**
-   * Load a tab's XML from the store and import it into the modeler.
-   * Uses `TabManager.loadXml()` so it works with any store backend.
-   */
-  private async _loadTabXML(tab: TabMeta): Promise<void> {
-    if (!this.modeler) return;
-
-    this._tabManager.setLifecycle(tab.id, 'loading');
-    try {
-      const xml = (await this._tabManager.loadXml(tab.id)) || EMPTY_DIAGRAM_XML;
-      await this.modeler.importXML(xml);
-
-      if (tab.viewbox) {
-        this.modeler.setViewbox(tab.viewbox);
-      } else {
-        this.modeler.canvas.zoom('fit-viewport');
-      }
-
-      this.modeler.customPropertiesProvider?.clearStore();
-      this._tabManager.setLifecycle(tab.id, 'ready');
-    } catch (err) {
-      console.error('[csp-bpmn] Failed to load tab XML:', err);
-      this._tabManager.setLifecycle(tab.id, 'error');
-    }
-  }
-
-  private async _switchToTab(nextId: string): Promise<boolean> {
-    if (this._switching || !this.modeler) return false;
-
-    this._switching = true;
-    this._loadingOverlay.show();
-    try {
-      // Snapshot the current tab before leaving it
-      const currentId = this._tabManager.getActiveId();
-      if (currentId) {
-        try {
-          const { xml } = await this.modeler.saveXML({ format: true });
-          await this._tabManager.snapshot(currentId, xml ?? '', this.modeler.getViewbox());
-        } catch { /* ignore */ }
-      }
-
-      const ok = await this._tabManager.activate(nextId);
-      if (!ok) return false;
-
-      const nextTab = this._tabManager.getActive();
-      if (nextTab) await this._loadTabXML(nextTab);
-
-      return true;
-    } finally {
-      this._switching = false;
-      this._loadingOverlay.hide();
-    }
-  }
-
-  private async _addAndActivateTab(config?: TabAddConfig): Promise<TabMeta> {
-    const tab = this._tabManager.add(config);
-    await this._switchToTab(tab.id);
-    return tab;
-  }
-
-  private async _onTabClose(id: string): Promise<void> {
-    if (!this._tabManager.has(id)) return;
-
-    const wasActive = this._tabManager.getActiveId() === id;
-    const adjacent  = this._tabManager.getAdjacentTo(id);
-
-    if (wasActive && this.modeler) {
-      try {
-        const { xml } = await this.modeler.saveXML({ format: true });
-        await this._tabManager.snapshot(id, xml ?? '', this.modeler.getViewbox());
-      } catch { /* ignore */ }
-    }
-
-    this._tabManager.remove(id);
-
-    if (!wasActive) return;
-
-    if (adjacent) {
-      await this._switchToTab(adjacent.id);
-    } else if (!this._tabManager.isEmpty()) {
-      await this._switchToTab(this._tabManager.getAll()[0].id);
-    } else {
-      await this._addAndActivateTab();
-    }
-  }
-
-  /**
-   * Push a new name into the active diagram's root process element.
-   * Uses a guard flag to prevent the subsequent `element.changed` event
-   * from echoing the change back and triggering a redundant tab title update.
-   */
-  private _syncDiagramName(name: string): void {
-    if (!this.modeler || this._syncingDiagramName) return;
-    this._syncingDiagramName = true;
-    try {
-      const root = this.modeler.canvas.getRootElement();
-      // modeling is only available in modeler mode (not NavigatedViewer)
-      this.modeler.modeling.updateProperties(root as any, { name });
-    } catch { /* viewer mode — no modeling service; silent fail */ }
-    finally {
-      this._syncingDiagramName = false;
-    }
-  }
-
-  private _wireTabDirtyTracking(): void {
-    if (!this.modeler) return;
-
-    const onCommandChanged = (): void => {
-      if (this._switching) return;
-      const activeId = this._tabManager.getActiveId();
-      if (activeId) this._tabManager.markDirty(activeId);
-    };
-
-    // When the user renames the root process element (e.g. via the properties
-    // panel or direct label edit), mirror the change back into the tab title.
-    const onElementChanged = (e: Record<string, unknown>): void => {
-      if (this._switching || this._syncingDiagramName) return;
-      try {
-        const element = e['element'] as any;
-        if (!element) return;
-        // Only care about the root process element
-        if (element.id !== this.modeler!.canvas.getRootElement().id) return;
-        const newName = element.businessObject?.name as string | undefined;
-        const activeId = this._tabManager.getActiveId();
-        if (!activeId || !newName) return;
-        const current = this._tabManager.get(activeId);
-        // Guard: skip if title already matches (prevents redundant re-renders)
-        if (current && current.title !== newName) {
-          this._tabManager.patch(activeId, { title: newName });
-        }
-      } catch { /* ignore — e.g. missing businessObject in viewer mode */ }
-    };
-
-    this.modeler.eventBus.on('commandStack.changed', onCommandChanged);
-    this.modeler.eventBus.on('element.changed',      onElementChanged);
-
-    this.eventCleanups.push(
-      () => { try { this.modeler?.eventBus.off('commandStack.changed', onCommandChanged); } catch { /* ignore */ } },
-      () => { try { this.modeler?.eventBus.off('element.changed',      onElementChanged); } catch { /* ignore */ } },
-    );
   }
 
   // ---------------------------------------------------------------------------
@@ -627,8 +437,6 @@ export class CspBpmnStudioElement extends BaseComponent {
     if (!this.modeler || !item) return;
     this._loadingOverlay.show('Placing SubProcess…');
     try {
-      // Tab-sourced items carry a resolveXml callback instead of inline XML.
-      // Await the lazy load before passing to the creator.
       const resolvedItem: SubprocessItem = item.resolveXml
         ? { ...item, xml: await item.resolveXml() }
         : item;

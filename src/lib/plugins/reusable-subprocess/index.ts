@@ -9,12 +9,26 @@ export type { SubprocessSource } from './subprocess-source.js';
 
 /**
  * bpmn-js additional module that enables reusable SubProcesses:
- *  - `SubprocessStore`         – in-memory XML store.
+ *  - `SubprocessStore`           – split-partition store (imported + tab items).
  *  - `SubprocessPaletteProvider` – palette entries (place + import).
  *  - `SubprocessPopupProvider`   – popup menu listing stored items.
  *
  * Register this in the Modeler's `additionalModules` list.
- * The studio also wires the file-picker and `subprocess.create` event.
+ *
+ * For automatic "Open Diagrams" sync, also register TabManagerModule and pass
+ * the TabManager instance via config:
+ *
+ *   new Modeler({
+ *     additionalModules: [TabManagerModule, ReusableSubprocessModule, ...],
+ *     tabManager: myTabManagerInstance,
+ *   });
+ *
+ * For a custom XML storage backend, pass it via config.subprocessBackend:
+ *
+ *   new Modeler({
+ *     additionalModules: [ReusableSubprocessModule],
+ *     subprocessBackend: new IndexedDBXmlBackend('csp-subprocess'),
+ *   });
  */
 export const ReusableSubprocessModule: { [key: string]: unknown } = {
   __init__: [

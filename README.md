@@ -1399,6 +1399,377 @@ function ensureStudioBundle(): Plugin {
 
 ---
 
+---
+
+## v2 Architecture Upgrade Plan (2026-03-23)
+
+Phần này ghi lại 3 vấn đề kiến trúc cần cải thiện trong phiên bản tiếp theo, kèm phân tích nguyên nhân, giải pháp đề xuất và migration path.
+
+---
+
+### Issue #1 — TabManager: Trở thành bpmn-js DI Service
+
+#### Vấn đề hiện tại
+
+`CspBpmnStudioElement` (~650 dòng) đang ôm quá nhiều logic liên quan đến TabManager:
+
+- Khởi tạo `TabManager` + `TabBarUI` + wire toàn bộ event listeners
+- Tạo `TabDiagramSource` và inject vào `new Modeler({ subprocessSources: [...] })`
+- Xử lý tab switching (`_switchToTab`, `_loadTabXML`) hoàn toàn trong Web Component
+- Lắng nghe `subprocess.create` và delegate sang các service bên trong modeler
+
+Đây là **God Object antipattern** — Studio biết quá nhiều thứ, khó test, khó tách ra.
+
+#### Giải pháp: `TabManagerService` + `TabManagerModule`
+
+Tạo `TabManagerService` như một bpmn-js DI service thực thụ (tương tự `SubprocessStore`, `SubprocessPaletteProvider`). Studio chỉ cần pass `tabManager` instance qua `config` và mọi thứ tự wire.
+
+```typescript
+// src/lib/plugins/tab-manager/tab-manager-service.ts
+
+class TabManagerService {
+  static $inject = ['config.tabManager', 'eventBus'];
+
+  constructor(
+    private readonly _tabManager: TabManager,
+    private readonly _eventBus:   BpmnEventBus,
+  ) {
+    // Bridge outer TypedEventBus → inner bpmn-js eventBus
+    const sync = () => _eventBus.fire('tabs.changed', {
+      tabs: this.getTabItems(),
+    });
+
+    _tabManager.events.on('tab.added',     sync);
+    _tabManager.events.on('tab.removed',   sync);
+    _tabManager.events.on('tab.updated',   sync);
+    _tabManager.events.on('tab.activated', sync);
+    _tabManager.events.on('tab.lifecycle', sync);
+  }
+
+  /** SubprocessItem[] dùng được bởi SubprocessStore */
+  getTabItems(): SubprocessItem[] {
+    const activeId = this._tabManager.getActiveId();
+    return this._tabManager.getAll()
+      .filter(t => t.id !== activeId && t.lifecycle !== 'error')
+      .map(t => ({
+        storeId:    `__tab__${t.id}`,
+        name:       t.title,
+        xml:        '',
+        createdAt:  t.createdAt,
+        resolveXml: () => this._tabManager.loadXml(t.id),
+      }));
+  }
+}
+
+export const TabManagerModule = {
+  __init__: ['tabManagerService'],
+  tabManagerService: ['type', TabManagerService],
+};
+```
+
+**Cách dùng trong Studio (sau khi refactor):**
+
+```typescript
+// CspBpmnStudioElement — chỉ cần pass instance, không tự wire nữa
+new Modeler({
+  additionalModules: [TabManagerModule, ReusableSubprocessModule, ...],
+  tabManager: this._tabManager,  // ← DI container nhận và inject vào TabManagerService
+});
+```
+
+**Lợi ích:**
+
+| | Trước | Sau |
+|--|-------|-----|
+| Nơi tạo `TabDiagramSource` | `CspBpmnStudioElement` (thủ công) | Tự động bởi `TabManagerService` |
+| Wire `subprocessSources` | `CspBpmnStudioElement` phải tự làm | Không cần — xem Issue #3 |
+| Unit test | Phải dựng full Web Component | Mock `config.tabManager` + `eventBus` |
+| Thêm consumer mới (breadcrumb, status bar) | Sửa Studio | Subscribe `tabs.changed` từ DI |
+
+`TabDiagramSource` (`tab-diagram-source.ts`) có thể **bị xóa** — logic của nó chuyển vào `TabManagerService.getTabItems()`.
+
+---
+
+### Issue #2 — Reusable Subprocess: Pluggable Storage Backend
+
+#### Vấn đề hiện tại
+
+```typescript
+class SubprocessStore {
+  private _items = new Map<string, SubprocessItem>();
+
+  add(item: SubprocessItem): void {
+    this._items.set(item.storeId, item);  // ← XML nặng lưu thẳng trong Map
+    this._eventBus.fire('subprocess.store.changed', {});
+  }
+}
+```
+
+Khi user import 10 file BPMN lớn (mỗi ~300KB) → **3MB RAM** bị giữ mãi. Không persist qua reload trang.
+
+#### Giải pháp: Tách Metadata khỏi XML (cùng pattern với `TabMeta` / `DiagramTabState`)
+
+Tab Management đã giải quyết vấn đề này bằng cách tách `TabMeta` (nhẹ, luôn trong RAM) khỏi XML (nặng, load on-demand). Áp dụng chính xác pattern đó cho Subprocess.
+
+**Step 1 — Extract `AbstractXmlBackend` (shared interface):**
+
+```typescript
+// src/lib/core/xml-backend.ts  ← dùng chung cho cả Tab và Subprocess
+
+abstract class AbstractXmlBackend {
+  abstract saveXml(id: string, xml: string): Promise<void>;
+  abstract loadXml(id: string): Promise<string>;
+  abstract removeXml(id: string): Promise<void>;
+  dispose(): void {}
+}
+
+class MemoryXmlBackend extends AbstractXmlBackend {
+  private _cache = new Map<string, string>();
+  async saveXml(id, xml) { this._cache.set(id, xml); }
+  async loadXml(id)      { return this._cache.get(id) ?? ''; }
+  async removeXml(id)    { this._cache.delete(id); }
+}
+
+class IndexedDBXmlBackend extends AbstractXmlBackend { ... }
+```
+
+**Step 2 — `SubprocessStore` dùng backend, không giữ XML trong Map:**
+
+```typescript
+class SubprocessStore {
+  static $inject = ['eventBus', 'config.subprocessBackend'];
+
+  // Chỉ giữ metadata trong memory
+  private _meta    = new Map<string, Omit<SubprocessItem, 'xml'>>();
+  private _backend: AbstractXmlBackend;
+
+  constructor(eventBus, backend?: AbstractXmlBackend) {
+    this._backend = backend ?? new MemoryXmlBackend();
+  }
+
+  async add(item: SubprocessItem): Promise<void> {
+    if (item.xml) {
+      await this._backend.saveXml(item.storeId, item.xml);
+    }
+    this._meta.set(item.storeId, {
+      storeId:    item.storeId,
+      name:       item.name,
+      createdAt:  item.createdAt,
+      resolveXml: item.resolveXml ?? (() => this._backend.loadXml(item.storeId)),
+    });
+    this._eventBus.fire('subprocess.store.changed', {});
+  }
+
+  getAll(): SubprocessItem[] {
+    return [...this._meta.values()].map(m => ({ ...m, xml: '' }));
+  }
+}
+```
+
+**Dùng IndexedDB cho production:**
+
+```typescript
+new Modeler({
+  additionalModules: [ReusableSubprocessModule],
+  subprocessBackend: new IndexedDBXmlBackend('csp-subprocess'),  // persist qua reload!
+});
+```
+
+**So sánh memory footprint:**
+
+| Scenario | Trước | Sau (IndexedDB backend) |
+|----------|-------|------------------------|
+| 10 files × 300KB import | ~3MB in RAM mãi | ~0KB RAM (metadata chỉ ~1KB) |
+| Chọn item từ popup | Instant (từ RAM) | ~5–10ms (IndexedDB read) |
+| Reload trang | Mất hết | Persist tự động |
+
+**Tái sử dụng với `AbstractTabStore`:**
+
+`AbstractTabStore` không cần thay đổi. `AbstractXmlBackend` là interface nhỏ hơn, tái sử dụng được độc lập. `IndexedDBTabStore` có thể refactor để dùng `IndexedDBXmlBackend` internally, tránh duplicate code.
+
+```
+AbstractXmlBackend (mới, shared)
+  ├── MemoryXmlBackend
+  ├── LocalStorageXmlBackend
+  └── IndexedDBXmlBackend
+        │
+        ├── dùng bởi IndexedDBTabStore (refactor)
+        └── dùng bởi SubprocessStore (mới)
+```
+
+---
+
+### Issue #3 — EventBus Bridge: Tab-Subprocess Auto-Sync
+
+#### Vấn đề hiện tại
+
+`TabDiagramSource.getItems()` là **sync snapshot** — chỉ phản ánh trạng thái tại thời điểm popup mở, không tự cập nhật khi tab thay đổi. Ngoài ra, việc tạo và inject `TabDiagramSource` đặt gánh nặng lên `CspBpmnStudioElement`.
+
+**Câu hỏi của bạn: "Có thể dùng EventBus để giao tiếp giữa các service không?"**
+
+**Câu trả lời: Đúng hướng, nhưng cần một bridge.** bpmn-js được thiết kế để các service giao tiếp qua `eventBus`. Tuy nhiên tồn tại hai bus:
+
+```
+Outer world:  TabManager.events  (TypedEventBus)  ← sống ngoài modeler
+Inner world:  bpmn-js eventBus                    ← sống trong DI container
+```
+
+Không thể inject trực tiếp từ outer sang inner. `TabManagerService` (Issue #1) chính là **bridge** này.
+
+#### Giải pháp: Event-Driven Pipeline
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  OUTER (TabManager)                                             │
+│                                                                 │
+│  TabManager.events.on('tab.added' | 'tab.removed' | ...)        │
+│      └─► TypedEventBus fires                                    │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │
+                    TabManagerService
+                    (DI bridge service)
+                           │
+                    eventBus.fire('tabs.changed', { tabs })
+                           │
+┌──────────────────────────┴──────────────────────────────────────┐
+│  INNER (bpmn-js DI)                                             │
+│                                                                 │
+│  SubprocessStore.on('tabs.changed')                             │
+│      └─► this._tabItems = tabs                                  │
+│      └─► eventBus.fire('subprocess.store.changed', {})          │
+│                                                                 │
+│  SubprocessPopupProvider                                        │
+│      └─► (nếu popup đang mở) entries được re-render tự động     │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Implementation chi tiết:**
+
+```typescript
+// SubprocessStore — sau khi refactor
+class SubprocessStore {
+  static $inject = ['eventBus', '?tabManagerService', 'config.subprocessBackend'];
+
+  private _importedItems = new Map<string, SubprocessItem>(); // từ file import
+  private _tabItems:       SubprocessItem[] = [];             // từ TabManagerService
+
+  constructor(
+    eventBus:           BpmnEventBus,
+    tabManagerService?: TabManagerService,
+    backend?:           AbstractXmlBackend,
+  ) {
+    this._backend = backend ?? new MemoryXmlBackend();
+
+    // Initial sync (popup lần đầu mở đã có data)
+    if (tabManagerService) {
+      this._tabItems = tabManagerService.getTabItems();
+    }
+
+    // Reactive update — tự động khi tab thay đổi
+    eventBus.on('tabs.changed', ({ tabs }: { tabs: SubprocessItem[] }) => {
+      this._tabItems = tabs;
+      eventBus.fire('subprocess.store.changed', {});
+    });
+  }
+
+  getAll(): SubprocessItem[] {
+    // Merge: file-imported + tab-sourced
+    return [...this._importedItems.values(), ...this._tabItems];
+  }
+}
+```
+
+**Không còn cần `config.subprocessSources` cho tab integration:**
+
+```typescript
+// Trước — Studio phải tự wire
+new Modeler({
+  subprocessSources: [new TabDiagramSource(tabManager)],  // ← bỏ dòng này
+});
+
+// Sau — tự động qua DI
+new Modeler({
+  additionalModules: [TabManagerModule, ReusableSubprocessModule],
+  tabManager: tabManagerInstance,  // ← TabManagerService tự lo phần còn lại
+});
+```
+
+**Phân tích SOLID:**
+
+| Nguyên tắc | Đánh giá |
+|-----------|----------|
+| **S** — Single Responsibility | `TabManagerService` chỉ bridge events. `SubprocessStore` chỉ quản lý items. Mỗi class một lý do thay đổi. |
+| **O** — Open/Closed | Thêm source mới (API catalog, template library) = thêm service mới fire `subprocess.items.added`, không sửa `SubprocessStore`. |
+| **L** — Liskov | `?tabManagerService` có thể là `undefined`; `SubprocessStore` hoạt động đúng cả hai trường hợp (với và không có tab integration). |
+| **I** — Interface Segregation | `TabManagerService` expose chỉ `getTabItems()` — đúng thứ `SubprocessStore` cần, không expose toàn bộ `TabManager`. |
+| **D** — Dependency Inversion | `SubprocessStore` phụ thuộc vào `eventBus` (abstraction interface của bpmn-js), không phải concrete `TabManagerService`. |
+
+**Lợi ích so với cách cũ:**
+
+| | Cách cũ (`config.subprocessSources`) | Cách mới (EventBus Bridge) |
+|--|--------------------------------------|---------------------------|
+| Khởi tạo | `CspBpmnStudioElement` phải tạo & inject | Tự động qua DI module |
+| Cập nhật khi tab đổi | Chỉ khi popup mở lại (stale) | Real-time reactive |
+| Tab đang loading | Không xử lý | `tab.lifecycle` event → hide entry |
+| Tab đổi tên | Không cập nhật cho đến khi popup mở lại | `tab.updated` → re-render |
+| Unit test | Cần mock full modeler config | `eventBus.fire('tabs.changed', mock)` |
+| Thêm external source | Implement `SubprocessSource`, pass vào config | Có thể giữ `SubprocessSource` cho non-tab sources |
+
+---
+
+### Migration Path (3 phase)
+
+**Phase 1 — TabManagerService + EventBus bridge** _(không breaking)_
+
+1. Tạo `TabManagerModule` + `TabManagerService`
+2. `TabManagerService` fire `tabs.changed` khi tab events xảy ra
+3. `SubprocessStore` lắng nghe `tabs.changed`, cập nhật `_tabItems`
+4. `config.subprocessSources` vẫn hoạt động (backward compat)
+5. **Test**: mở popup → thêm tab mới → popup tự cập nhật "Open Diagrams"
+
+**Phase 2 — Pluggable XML backend cho subprocess** _(không breaking)_
+
+1. Extract `AbstractXmlBackend` interface
+2. `SubprocessStore` nhận `config.subprocessBackend` (optional, default: `MemoryXmlBackend`)
+3. Test với `IndexedDBXmlBackend`: import file, reload trang → vẫn còn
+4. **Test**: import 10 file BPMN, verify RAM footprint thấp hơn trước
+
+**Phase 3 — Cleanup** _(có thể breaking nếu external consumers dùng `SubprocessSource`)_
+
+1. Deprecate `TabDiagramSource` + `tab-diagram-source.ts`
+2. Loại bỏ `config.subprocessSources` khỏi `CspBpmnStudioElement` modeler config
+3. Giữ `SubprocessSource` interface nếu cần cho external sources (API catalog, v.v.)
+4. `CspBpmnStudioElement` giảm ~100 dòng logic tab-subprocess wiring
+
+---
+
+### File structure sau khi refactor
+
+```
+src/lib/
+├── core/
+│   └── xml-backend.ts            # AbstractXmlBackend (mới — shared)
+│       ├── MemoryXmlBackend
+│       ├── LocalStorageXmlBackend
+│       └── IndexedDBXmlBackend
+├── plugins/
+│   ├── tab-manager/              # MỚI — TabManager as DI module
+│   │   ├── tab-manager-service.ts
+│   │   └── index.ts
+│   └── reusable-subprocess/
+│       ├── subprocess-store.ts   # CẬP NHẬT — pluggable backend + tab auto-sync
+│       ├── subprocess-backend.ts # (optional wrapper nếu cần extend AbstractXmlBackend)
+│       └── ...
+├── studio/
+│   ├── tab-diagram-source.ts     # DEPRECATED — logic chuyển vào TabManagerService
+│   └── csp-bpmn-studio.ts        # GỌN HƠN — bỏ SubprocessSource wiring
+└── tabs/
+    └── store/
+        └── indexed-db-tab-store.ts  # REFACTOR — dùng IndexedDBXmlBackend internally
+```
+
+---
+
 ## License
 
 MIT

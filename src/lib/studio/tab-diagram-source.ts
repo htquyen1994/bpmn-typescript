@@ -1,22 +1,34 @@
 // =============================================================================
-// TabDiagramSource — SubprocessSource bridge between TabManager and the
-// reusable-subprocess popup menu.
+// @deprecated
 //
-// Each open diagram tab (except the currently active one) is exposed as a
-// SubprocessItem. The XML is loaded lazily via `resolveXml` so no upfront
-// I/O occurs just because the popup was opened.
+// TabDiagramSource is no longer used internally.
 //
-// Usage (pass to Modeler config):
+// Tab-to-subprocess integration is now handled automatically via the
+// TabManagerModule DI service and EventBus bridge:
+//
 //   new Modeler({
-//     additionalModules: [ReusableSubprocessModule],
-//     subprocessSources: [new TabDiagramSource(tabManager)],
-//   })
+//     additionalModules: [TabManagerModule, ReusableSubprocessModule, ...],
+//     tabManager: myTabManagerInstance,
+//   });
+//
+// TabManagerService fires 'tabs.changed' on the bpmn-js eventBus whenever
+// tabs change. SubprocessStore listens and updates its 'Open Diagrams' section
+// reactively — no manual SubprocessSource configuration is needed.
+//
+// This file is kept for backwards compatibility only. It will be removed in a
+// future major version.
 // =============================================================================
 
 import type { TabManager }     from '../tabs/tab-manager.js';
 import type { SubprocessSource } from '../plugins/reusable-subprocess/subprocess-source.js';
 import type { SubprocessItem }   from '../plugins/reusable-subprocess/subprocess-store.js';
 
+/**
+ * @deprecated Use TabManagerModule instead.
+ * Pass `tabManager` via Modeler config and register TabManagerModule in
+ * additionalModules — the "Open Diagrams" popup section is populated and
+ * kept in sync automatically without this class.
+ */
 export class TabDiagramSource implements SubprocessSource {
   readonly label = 'Open Diagrams';
 
@@ -27,8 +39,6 @@ export class TabDiagramSource implements SubprocessSource {
 
     return this._tabManager
       .getAll()
-      // Exclude the diagram currently open in the modeler (can't place itself)
-      // and tabs that failed to load (no usable XML).
       .filter(tab => tab.id !== activeId && tab.lifecycle !== 'error')
       .map(tab => {
         const tabId   = tab.id;
@@ -36,9 +46,9 @@ export class TabDiagramSource implements SubprocessSource {
         return {
           storeId:    `tab-${tabId}`,
           name:       tab.title,
-          xml:        '',                              // populated lazily below
+          xml:        '',
           createdAt:  tab.createdAt,
-          resolveXml: () => manager.loadXml(tabId),   // async fetch from store backend
+          resolveXml: () => manager.loadXml(tabId),
         };
       });
   }

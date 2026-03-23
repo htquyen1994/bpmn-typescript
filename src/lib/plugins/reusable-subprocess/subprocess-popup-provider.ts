@@ -4,8 +4,6 @@ import type { BpmnCanvas, BpmnEventBus }         from '../../studio/bpmn-modeler
 import type { BpmnPopupMenu }                    from '../../core/bpmn-types.js';
 
 // ── Inline CSS ─────────────────────────────────────────────────────────────────
-// Injected once into the document so section headings look like section headings,
-// not like disabled menu items.
 
 const SECTION_CSS = `
 .djs-popup .entry.csp-popup-sp-section-header {
@@ -39,23 +37,27 @@ const SECTION_CSS = `
 /**
  * Registers a popup-menu provider under the key `'reusable-subprocess'`.
  *
- * Renders two (or more) labelled sections in the popup body:
+ * Sections rendered:
  *
  *  ┌─────────────────────────────────────┐
  *  │ [Import XML…]          ← header     │
  *  ├─────────────────────────────────────┤
  *  │ IMPORTED SUBPROCESSES   ← section   │
  *  │   ▸ My Process                      │
- *  │   ▸ Order Flow                      │
  *  ├─────────────────────────────────────┤
- *  │ OPEN DIAGRAMS           ← section   │
+ *  │ OPEN DIAGRAMS           ← section   │  only when TabManagerModule registered
  *  │   ▸ Diagram 2                       │
- *  │   ▸ Diagram 3                       │
+ *  ├─────────────────────────────────────┤
+ *  │ CUSTOM SOURCE           ← section   │  any config.subprocessSources entries
+ *  │   ▸ Template A                      │
  *  └─────────────────────────────────────┘
  *
- * Additional sources (e.g. TabDiagramSource) are appended after the built-in
- * store section by passing them via `config.subprocessSources` in the Modeler
- * constructor — the plugin never needs to be modified.
+ * "Open Diagrams" is driven by SubprocessStore.getTabItems() which is kept
+ * in sync automatically via the 'tabs.changed' eventBus event when
+ * TabManagerModule is registered. No manual SubprocessSource config needed.
+ *
+ * Additional external sources (API catalogs, template libraries, etc.) can
+ * still be registered via config.subprocessSources for backwards compatibility.
  */
 export class SubprocessPopupProvider {
   static $inject = [
@@ -67,22 +69,21 @@ export class SubprocessPopupProvider {
   ];
 
   private readonly _subprocessStore: SubprocessStore;
-  private readonly _eventBus: BpmnEventBus;
-  private readonly _extraSources: SubprocessSource[];
+  private readonly _eventBus:        BpmnEventBus;
+  private readonly _extraSources:    SubprocessSource[];
 
   constructor(
-    popupMenu:     BpmnPopupMenu,
+    popupMenu:       BpmnPopupMenu,
     subprocessStore: SubprocessStore,
-    eventBus:      BpmnEventBus,
-    canvas:        BpmnCanvas,
-    extraSources:  SubprocessSource[] | null = null,
+    eventBus:        BpmnEventBus,
+    canvas:          BpmnCanvas,
+    extraSources:    SubprocessSource[] | null = null,
   ) {
     popupMenu.registerProvider('reusable-subprocess', 1500, this);
     this._subprocessStore = subprocessStore;
     this._eventBus        = eventBus;
     this._extraSources    = extraSources ?? [];
 
-    // Inject section styling once per document
     this._injectStyles(canvas.getContainer().ownerDocument ?? document);
   }
 
@@ -106,17 +107,30 @@ export class SubprocessPopupProvider {
     const entries:  Record<string, object> = {};
     const eventBus = this._eventBus;
 
-    // Section 1 — Imported SubProcesses (always first)
+    // Section 1 — File-imported SubProcesses (always first)
     this._appendSection(
       entries,
       'imported',
       'Imported SubProcesses',
-      this._subprocessStore.getAll(),
+      this._subprocessStore.getImportedItems(),
       eventBus,
       /* isFirst */ true,
     );
 
-    // Section 2+ — Extra sources registered via config.subprocessSources
+    // Section 2 — Open diagram tabs (auto-synced via EventBus bridge)
+    // Only shown when TabManagerModule is registered.
+    if (this._subprocessStore.hasTabIntegration) {
+      this._appendSection(
+        entries,
+        'open-diagrams',
+        'Open Diagrams',
+        this._subprocessStore.getTabItems(),
+        eventBus,
+      );
+    }
+
+    // Section 3+ — External sources registered via config.subprocessSources
+    // (kept for non-tab sources: API catalogs, template libraries, etc.)
     for (const source of this._extraSources) {
       const key = source.label.toLowerCase().replace(/[\s/]+/g, '-');
       this._appendSection(entries, key, source.label, source.getItems(), eventBus);
@@ -127,10 +141,6 @@ export class SubprocessPopupProvider {
 
   // ── Private ──────────────────────────────────────────────────────────────────
 
-  /**
-   * Append one labelled section to the entries object.
-   * `isFirst` removes the top border on the very first heading.
-   */
   private _appendSection(
     entries:  Record<string, object>,
     key:      string,
